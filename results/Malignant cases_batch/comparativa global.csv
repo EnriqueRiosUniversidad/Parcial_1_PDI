@@ -1,0 +1,14 @@
+algorithm,image_count,avg_original_std,avg_processed_std,std_delta,avg_ambe,avg_psnr,contrast_effect,ranking_score,rank
+Enhanced Top-Hat 7x7,561,76.2617,78.3871,2.1254,0.7822,27.317,increase,40.1683,1
+Enhanced Top-Hat 3x3,561,76.2617,76.7772,0.5155,0.2475,36.1989,increase,40.0748,2
+Enhanced Top-Hat 5x5,561,76.2617,77.7693,1.5076,0.7254,29.6198,increase,40.003,3
+CLAHE clip 1.5,561,76.2617,72.6266,-3.6351,3.3788,27.4454,decrease,35.9962,4
+CLAHE clip 2.0,561,76.2617,71.4593,-4.8025,3.5725,25.5047,decrease,35.2186,5
+CLAHE clip 3.0,561,76.2617,69.6158,-6.6459,3.6054,22.9303,decrease,34.1517,6
+HE,561,76.2617,70.5038,-5.758,26.1575,16.0091,decrease,22.9736,7
+White Top-Hat 7x7,561,76.2617,17.1828,-59.0789,99.8957,6.3104,decrease,-41.0409,8
+White Top-Hat 5x5,561,76.2617,13.3162,-62.9455,101.6462,6.187,decrease,-43.8556,9
+Black Top-Hat 7x7,561,76.2617,6.4521,-69.8096,102.3103,6.0586,decrease,-47.6261,10
+Black Top-Hat 5x5,561,76.2617,4.3701,-71.8916,103.4964,5.9952,decrease,-49.2634,11
+White Top-Hat 3x3,561,76.2617,4.8785,-71.3833,104.2892,5.9841,decrease,-49.4062,12
+Black Top-Hat 3x3,561,76.2617,2.1623,-74.0994,104.8046,5.9213,decrease,-51.0251,13

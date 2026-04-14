@@ -582,9 +582,7 @@ class ImageApp:
             "Batch completado",
             "Procesamiento batch finalizado.\n"
             f"Carpeta: {result_paths['batch_dir']}\n"
-            f"Resumen: {result_paths['per_image_csv']}\n"
-            f"Comparativo: {result_paths['global_csv']}\n"
-            f"Ranking: {result_paths['ranking_csv']}",
+            f"Comparativa global: {result_paths['comparison_csv']}",
         )
         self.status_label.configure(text=f"Batch completado para {self.current_folder.name}")
 
