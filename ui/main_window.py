@@ -11,9 +11,16 @@ import numpy as np
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 
+from core.algorithms import apply_histogram_equalization
 from core.image_loader import list_image_files, load_image
 from core.histograms import calculate_grayscale_histogram
-from core.metrics import calculate_basic_metrics
+from core.metrics import (
+    calculate_ambe,
+    calculate_basic_metrics,
+    calculate_psnr,
+    evaluate_brightness_preservation,
+    evaluate_contrast_change,
+)
 
 
 class ImageApp:
@@ -28,7 +35,11 @@ class ImageApp:
         self.current_folder: Path | None = None
         self.image_paths: list[Path] = []
         self.original_canvas: FigureCanvasTkAgg | None = None
+        self.processed_canvas: FigureCanvasTkAgg | None = None
         self.histogram_canvas: FigureCanvasTkAgg | None = None
+        self.processed_histogram_canvas: FigureCanvasTkAgg | None = None
+        self.right_canvas: tk.Canvas | None = None
+        self.right_scrollbar: ttk.Scrollbar | None = None
 
         self._build_ui()
 
@@ -48,8 +59,19 @@ class ImageApp:
         )
         select_button.grid(row=0, column=0, sticky="w")
 
+        ttk.Label(toolbar, text="Algoritmo:").grid(row=0, column=1, sticky="e", padx=(20, 5))
+        self.algorithm_var = tk.StringVar(value="HE")
+        self.algorithm_combo = ttk.Combobox(
+            toolbar,
+            textvariable=self.algorithm_var,
+            values=["HE"],
+            state="readonly",
+            width=10,
+        )
+        self.algorithm_combo.grid(row=0, column=2, sticky="w")
+
         self.folder_label = ttk.Label(toolbar, text="Ninguna carpeta seleccionada")
-        self.folder_label.grid(row=0, column=1, sticky="w", padx=(10, 0))
+        self.folder_label.grid(row=0, column=3, sticky="w", padx=(10, 0))
 
         left_panel = ttk.Frame(self.root, padding=(10, 0, 5, 10))
         left_panel.grid(row=1, column=0, sticky="nsew")
@@ -76,40 +98,89 @@ class ImageApp:
         right_panel = ttk.Frame(self.root, padding=(5, 0, 10, 10))
         right_panel.grid(row=1, column=1, sticky="nsew")
         right_panel.columnconfigure(0, weight=1)
-        right_panel.rowconfigure(1, weight=2)
-        right_panel.rowconfigure(2, weight=1)
+        right_panel.rowconfigure(0, weight=1)
 
-        ttk.Label(right_panel, text="Imagen original").grid(row=0, column=0, sticky="w", pady=(0, 5))
+        self.right_canvas = tk.Canvas(right_panel, highlightthickness=0)
+        self.right_canvas.grid(row=0, column=0, sticky="nsew")
 
-        self.original_container = tk.Frame(right_panel, bd=1, relief="solid")
-        self.original_container.grid(row=1, column=0, sticky="nsew", pady=(0, 10))
+        self.right_scrollbar = ttk.Scrollbar(right_panel, orient="vertical", command=self.right_canvas.yview)
+        self.right_scrollbar.grid(row=0, column=1, sticky="ns")
+        self.right_canvas.configure(yscrollcommand=self.right_scrollbar.set)
+
+        preview_frame = ttk.Frame(self.right_canvas)
+        preview_window = self.right_canvas.create_window((0, 0), window=preview_frame, anchor="nw")
+
+        def _update_scrollregion(event: tk.Event) -> None:
+            self.right_canvas.configure(scrollregion=self.right_canvas.bbox("all"))
+
+        def _sync_width(event: tk.Event) -> None:
+            self.right_canvas.itemconfigure(preview_window, width=event.width)
+
+        preview_frame.bind("<Configure>", _update_scrollregion)
+        self.right_canvas.bind("<Configure>", _sync_width)
+        self._bind_mousewheel(self.right_canvas)
+
+        preview_frame.columnconfigure(0, weight=1)
+        preview_frame.columnconfigure(1, weight=1)
+        preview_frame.rowconfigure(1, weight=1)
+        preview_frame.rowconfigure(4, weight=1)
+
+        ttk.Label(preview_frame, text="Histograma original").grid(row=0, column=0, sticky="w", pady=(0, 5))
+        ttk.Label(preview_frame, text="Imagen original").grid(row=0, column=1, sticky="w", pady=(0, 5))
+
+        self.histogram_container = tk.Frame(preview_frame, bd=1, relief="solid")
+        self.histogram_container.grid(row=1, column=0, sticky="nsew", padx=(0, 10), pady=(0, 10))
+        self.histogram_container.columnconfigure(0, weight=1)
+        self.histogram_container.rowconfigure(0, weight=1)
+
+        self.original_container = tk.Frame(preview_frame, bd=1, relief="solid")
+        self.original_container.grid(row=1, column=1, sticky="nsew", pady=(0, 10))
         self.original_container.columnconfigure(0, weight=1)
         self.original_container.rowconfigure(0, weight=1)
 
-        metrics_frame = ttk.LabelFrame(right_panel, text="Métricas originales", padding=10)
-        metrics_frame.grid(row=2, column=0, sticky="ew", pady=(0, 10))
+        ttk.Label(preview_frame, text="Histograma procesado").grid(row=2, column=0, sticky="w", pady=(0, 5))
+        ttk.Label(preview_frame, text="Imagen procesada").grid(row=2, column=1, sticky="w", pady=(0, 5))
+
+        self.processed_histogram_container = tk.Frame(preview_frame, bd=1, relief="solid")
+        self.processed_histogram_container.grid(row=3, column=0, sticky="nsew", padx=(0, 10), pady=(0, 10))
+        self.processed_histogram_container.columnconfigure(0, weight=1)
+        self.processed_histogram_container.rowconfigure(0, weight=1)
+
+        self.processed_container = tk.Frame(preview_frame, bd=1, relief="solid")
+        self.processed_container.grid(row=3, column=1, sticky="nsew", pady=(0, 10))
+        self.processed_container.columnconfigure(0, weight=1)
+        self.processed_container.rowconfigure(0, weight=1)
+
+        metrics_frame = ttk.LabelFrame(right_panel, text="Métricas comparativas", padding=10)
+        metrics_frame.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(0, 10))
         metrics_frame.columnconfigure(1, weight=1)
 
-        ttk.Label(metrics_frame, text="Media:").grid(row=0, column=0, sticky="w")
-        self.mean_value_label = ttk.Label(metrics_frame, text="-")
-        self.mean_value_label.grid(row=0, column=1, sticky="w", padx=(10, 0))
+        ttk.Label(metrics_frame, text="Desviación estándar original:").grid(row=0, column=0, sticky="w")
+        self.original_std_value_label = ttk.Label(metrics_frame, text="-")
+        self.original_std_value_label.grid(row=0, column=1, sticky="w", padx=(10, 0))
 
-        ttk.Label(metrics_frame, text="Desviación estándar:").grid(row=1, column=0, sticky="w")
-        self.std_value_label = ttk.Label(metrics_frame, text="-")
-        self.std_value_label.grid(row=1, column=1, sticky="w", padx=(10, 0))
+        ttk.Label(metrics_frame, text="Desviación estándar procesada:").grid(row=1, column=0, sticky="w")
+        self.processed_std_value_label = ttk.Label(metrics_frame, text="-")
+        self.processed_std_value_label.grid(row=1, column=1, sticky="w", padx=(10, 0))
 
-        ttk.Label(right_panel, text="Histograma original").grid(row=3, column=0, sticky="w", pady=(0, 5))
+        ttk.Label(metrics_frame, text="AMBE:").grid(row=2, column=0, sticky="w")
+        self.ambe_value_label = ttk.Label(metrics_frame, text="-")
+        self.ambe_value_label.grid(row=2, column=1, sticky="w", padx=(10, 0))
 
-        self.histogram_container = tk.Frame(right_panel, bd=1, relief="solid")
-        self.histogram_container.grid(row=4, column=0, sticky="nsew")
-        self.histogram_container.columnconfigure(0, weight=1)
-        self.histogram_container.rowconfigure(0, weight=1)
+        ttk.Label(metrics_frame, text="PSNR:").grid(row=3, column=0, sticky="w")
+        self.psnr_value_label = ttk.Label(metrics_frame, text="-")
+        self.psnr_value_label.grid(row=3, column=1, sticky="w", padx=(10, 0))
+
+        self.evaluation_label = ttk.Label(right_panel, text="Evaluación: -", wraplength=500, justify="left")
+        self.evaluation_label.grid(row=2, column=0, columnspan=2, sticky="w", pady=(0, 10))
 
         self.status_label = ttk.Label(self.root, text="Listo", anchor="w")
         self.status_label.grid(row=2, column=0, columnspan=2, sticky="ew", padx=10, pady=(0, 10))
 
         self._show_placeholder(self.original_container, "Selecciona una carpeta para comenzar")
+        self._show_placeholder(self.processed_container, "La imagen procesada aparecerá aquí")
         self._show_placeholder(self.histogram_container, "Selecciona una imagen para ver su histograma")
+        self._show_placeholder(self.processed_histogram_container, "El histograma procesado aparecerá aquí")
 
     def run(self) -> None:
         """Start the Tkinter event loop."""
@@ -160,13 +231,18 @@ class ImageApp:
             messagebox.showerror("Error", f"No se pudo cargar la imagen:\n{image_path.name}")
             self.status_label.configure(text="Error al cargar la imagen")
             self._show_placeholder(self.original_container, "No se pudo cargar la imagen")
+            self._show_placeholder(self.processed_container, "No se pudo cargar la imagen")
             self._show_placeholder(self.histogram_container, "No se pudo cargar la imagen")
-            self._set_metrics(None)
+            self._show_placeholder(self.processed_histogram_container, "No se pudo cargar la imagen")
+            self._set_comparative_metrics(None)
             return
 
+        processed_image = self._process_selected_algorithm(image)
         self._show_image(image, image_path.name)
-        self._show_histogram(image, image_path.name)
-        self._set_metrics(calculate_basic_metrics(image))
+        self._show_processed_image(processed_image, image_path.name)
+        self._show_histogram(image, image_path.name, self.histogram_container)
+        self._show_histogram(processed_image, f"HE: {image_path.name}", self.processed_histogram_container)
+        self._set_comparative_metrics(image, processed_image)
         self.status_label.configure(text=str(image_path))
 
     def _clear_preview(self, container: tk.Widget) -> None:
@@ -174,9 +250,15 @@ class ImageApp:
         if container is self.original_container and self.original_canvas is not None:
             self.original_canvas.get_tk_widget().destroy()
             self.original_canvas = None
+        if container is self.processed_container and self.processed_canvas is not None:
+            self.processed_canvas.get_tk_widget().destroy()
+            self.processed_canvas = None
         if container is self.histogram_container and self.histogram_canvas is not None:
             self.histogram_canvas.get_tk_widget().destroy()
             self.histogram_canvas = None
+        if container is self.processed_histogram_container and self.processed_histogram_canvas is not None:
+            self.processed_histogram_canvas.get_tk_widget().destroy()
+            self.processed_histogram_canvas = None
 
     def _show_placeholder(self, container: tk.Widget, text: str) -> None:
         """Show a simple text placeholder in the preview area."""
@@ -195,7 +277,7 @@ class ImageApp:
 
         image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
 
-        figure = Figure(figsize=(6, 6), dpi=100)
+        figure = Figure(figsize=(4.6, 4.6), dpi=100)
         axes = figure.add_subplot(111)
         axes.imshow(image_rgb)
         axes.set_title(title)
@@ -207,15 +289,33 @@ class ImageApp:
         widget.grid(row=0, column=0, sticky="nsew")
         self.original_canvas.draw()
 
-    def _show_histogram(self, image_bgr: np.ndarray, title: str) -> None:
+    def _show_processed_image(self, image_gray: np.ndarray, title: str) -> None:
+        """Render the processed grayscale image."""
+        self._clear_preview(self.processed_container)
+        for child in self.processed_container.winfo_children():
+            child.destroy()
+
+        figure = Figure(figsize=(4.6, 4.6), dpi=100)
+        axes = figure.add_subplot(111)
+        axes.imshow(image_gray, cmap="gray")
+        axes.set_title(title)
+        axes.axis("off")
+        figure.tight_layout()
+
+        self.processed_canvas = FigureCanvasTkAgg(figure, master=self.processed_container)
+        widget = self.processed_canvas.get_tk_widget()
+        widget.grid(row=0, column=0, sticky="nsew")
+        self.processed_canvas.draw()
+
+    def _show_histogram(self, image_bgr: np.ndarray, title: str, container: tk.Widget) -> None:
         """Render the grayscale histogram for the selected image."""
-        self._clear_preview(self.histogram_container)
-        for child in self.histogram_container.winfo_children():
+        self._clear_preview(container)
+        for child in container.winfo_children():
             child.destroy()
 
         histogram = calculate_grayscale_histogram(image_bgr)
 
-        figure = Figure(figsize=(6, 3), dpi=100)
+        figure = Figure(figsize=(4.6, 2.6), dpi=100)
         axes = figure.add_subplot(111)
         axes.plot(histogram, color="black", linewidth=1)
         axes.set_xlim([0, 255])
@@ -225,17 +325,54 @@ class ImageApp:
         axes.grid(alpha=0.2)
         figure.tight_layout()
 
-        self.histogram_canvas = FigureCanvasTkAgg(figure, master=self.histogram_container)
-        widget = self.histogram_canvas.get_tk_widget()
+        canvas = FigureCanvasTkAgg(figure, master=container)
+        widget = canvas.get_tk_widget()
         widget.grid(row=0, column=0, sticky="nsew")
-        self.histogram_canvas.draw()
+        canvas.draw()
 
-    def _set_metrics(self, metrics: dict[str, float] | None) -> None:
-        """Update the metric labels in the UI."""
-        if metrics is None:
-            self.mean_value_label.configure(text="-")
-            self.std_value_label.configure(text="-")
+        if container is self.histogram_container:
+            self.histogram_canvas = canvas
+        elif container is self.processed_histogram_container:
+            self.processed_histogram_canvas = canvas
+
+    def _bind_mousewheel(self, canvas: tk.Canvas) -> None:
+        """Enable mouse wheel scrolling on the right panel."""
+        def _on_mousewheel(event: tk.Event) -> str:
+            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+            return "break"
+
+        canvas.bind_all("<MouseWheel>", _on_mousewheel)
+
+    def _process_selected_algorithm(self, image_bgr: np.ndarray) -> np.ndarray:
+        """Apply the selected enhancement algorithm."""
+        algorithm_name = self.algorithm_var.get()
+        if algorithm_name == "HE":
+            return apply_histogram_equalization(image_bgr)
+        return apply_histogram_equalization(image_bgr)
+
+    def _set_comparative_metrics(self, original_image: np.ndarray | None, processed_image: np.ndarray | None = None) -> None:
+        """Update comparative metric labels and evaluation text."""
+        if original_image is None or processed_image is None:
+            self.original_std_value_label.configure(text="-")
+            self.processed_std_value_label.configure(text="-")
+            self.ambe_value_label.configure(text="-")
+            self.psnr_value_label.configure(text="-")
+            self.evaluation_label.configure(text="Evaluación: -")
             return
 
-        self.mean_value_label.configure(text=f"{metrics['media']:.2f}")
-        self.std_value_label.configure(text=f"{metrics['desviacion_estandar']:.2f}")
+        original_metrics = calculate_basic_metrics(original_image)
+        processed_metrics = calculate_basic_metrics(processed_image)
+        ambe_value = calculate_ambe(original_image, processed_image)
+        psnr_value = calculate_psnr(original_image, processed_image)
+
+        self.original_std_value_label.configure(text=f"{original_metrics['desviacion_estandar']:.2f}")
+        self.processed_std_value_label.configure(text=f"{processed_metrics['desviacion_estandar']:.2f}")
+        self.ambe_value_label.configure(text=f"{ambe_value:.2f}")
+        self.psnr_value_label.configure(text="Inf" if np.isinf(psnr_value) else f"{psnr_value:.2f}")
+
+        contrast_text = evaluate_contrast_change(
+            original_metrics["desviacion_estandar"],
+            processed_metrics["desviacion_estandar"],
+        )
+        brightness_text = evaluate_brightness_preservation(ambe_value)
+        self.evaluation_label.configure(text=f"Evaluación: {contrast_text} {brightness_text}")
