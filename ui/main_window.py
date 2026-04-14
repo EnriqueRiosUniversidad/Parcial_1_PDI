@@ -13,8 +13,12 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 
 from core.algorithms import apply_clahe, apply_histogram_equalization, apply_morphological_algorithm
-from core.batch import BatchConfig, run_folder_batch
-from core.batch import build_folder_comparison
+from core.batch import (
+    BatchConfig,
+    append_image_ranking_csv,
+    build_folder_comparison,
+    build_image_comparison,
+)
 from core.image_loader import list_image_files, load_image
 from core.histograms import calculate_grayscale_histogram
 from core.metrics import (
@@ -32,8 +36,11 @@ class ImageApp:
     def __init__(self) -> None:
         self.root = tk.Tk()
         self.root.title("Medical Contrast Explorer")
-        self.root.geometry("1280x820")
         self.root.minsize(1100, 700)
+        self.root.update_idletasks()
+        screen_width = self.root.winfo_screenwidth()
+        screen_height = self.root.winfo_screenheight()
+        self.root.geometry(f"{screen_width}x{screen_height}+0+0")
 
         self.current_folder: Path | None = None
         self.image_paths: list[Path] = []
@@ -51,29 +58,73 @@ class ImageApp:
         self.tile_grid_y_var = tk.StringVar(value="8")
         self.kernel_size_var = tk.StringVar(value="15")
         self.process_button: ttk.Button | None = None
-        self.batch_button: ttk.Button | None = None
+        self.image_ranking_button: ttk.Button | None = None
         self.experiment_button: ttk.Button | None = None
         self.kernel_results_tree: ttk.Treeview | None = None
         self.global_comparison_tree: ttk.Treeview | None = None
         self.image_comparison_tree: ttk.Treeview | None = None
         self.comparison_refresh_button: ttk.Button | None = None
-        self.comparison_frame: ttk.LabelFrame | None = None
+        self.global_comparison_frame: ttk.LabelFrame | None = None
+        self.image_comparison_frame: ttk.LabelFrame | None = None
         self.experiment_frame: ttk.LabelFrame | None = None
+        self.metrics_frame: ttk.LabelFrame | None = None
+        self.single_image_ranking_csv: Path | None = None
 
+        self._setup_visual_style()
         self._build_ui()
+
+    def _setup_visual_style(self) -> None:
+        """Apply a restrained fantasy-inspired dark theme."""
+        self.bg_main = "#111915"
+        self.bg_panel = "#17231d"
+        self.bg_panel_alt = "#1d2a23"
+        self.bg_canvas = "#0f1713"
+        self.bg_border = "#33463a"
+        self.text_main = "#e7e2d4"
+        self.text_muted = "#b8c0b0"
+        self.accent_gold = "#c9b46b"
+        self.accent_gold_soft = "#8e7a3f"
+        self.entry_bg = "#203028"
+
+        self.root.configure(bg=self.bg_main)
+
+        style = ttk.Style(self.root)
+        try:
+            style.theme_use("clam")
+        except tk.TclError:
+            pass
+
+        style.configure(".", background=self.bg_main, foreground=self.text_main, fieldbackground=self.entry_bg)
+        style.configure("TFrame", background=self.bg_main)
+        style.configure("TLabelframe", background=self.bg_panel, foreground=self.accent_gold, borderwidth=1)
+        style.configure("TLabelframe.Label", background=self.bg_panel, foreground=self.accent_gold, font=("Helvetica", 10, "bold"))
+        style.configure("TLabel", background=self.bg_main, foreground=self.text_main, font=("Helvetica", 10))
+        style.configure("Header.TLabel", background=self.bg_main, foreground=self.accent_gold, font=("Helvetica", 11, "bold"))
+        style.configure("TButton", background=self.bg_panel_alt, foreground=self.text_main, padding=(10, 6), borderwidth=1, focusthickness=1, focuscolor=self.accent_gold_soft)
+        style.map(
+            "TButton",
+            background=[("active", self.bg_border), ("pressed", self.bg_border)],
+            foreground=[("disabled", self.text_muted)],
+        )
+        style.configure("TCombobox", fieldbackground=self.entry_bg, background=self.bg_panel_alt, foreground=self.text_main, arrowcolor=self.accent_gold)
+        style.map("TCombobox", fieldbackground=[("readonly", self.entry_bg)], foreground=[("readonly", self.text_main)])
+        style.configure("Treeview", background=self.bg_panel, fieldbackground=self.bg_panel, foreground=self.text_main, rowheight=24, bordercolor=self.bg_border, borderwidth=1)
+        style.configure("Treeview.Heading", background=self.bg_panel_alt, foreground=self.text_main, relief="flat", font=("Helvetica", 10, "bold"))
+        style.map("Treeview", background=[("selected", self.bg_border)], foreground=[("selected", self.text_main)])
+        style.configure("Vertical.TScrollbar", background=self.bg_panel_alt, troughcolor=self.bg_main, arrowcolor=self.accent_gold)
 
     def _build_ui(self) -> None:
         """Create the base layout."""
         self.root.columnconfigure(1, weight=1)
         self.root.rowconfigure(1, weight=1)
 
-        toolbar = ttk.Frame(self.root, padding=(10, 6, 10, 4))
+        toolbar = ttk.Frame(self.root, padding=(10, 8, 10, 6), style="TFrame")
         toolbar.grid(row=0, column=0, columnspan=2, sticky="ew")
         toolbar.columnconfigure(0, weight=1)
         toolbar.columnconfigure(1, weight=1)
         toolbar.columnconfigure(2, weight=1)
 
-        source_frame = ttk.LabelFrame(toolbar, text="Origen", padding=(8, 4))
+        source_frame = ttk.LabelFrame(toolbar, text="Origen", padding=(8, 6))
         source_frame.grid(row=0, column=0, sticky="ew", padx=(0, 8))
         source_frame.columnconfigure(0, weight=1)
         select_button = ttk.Button(source_frame, text="Abrir carpeta", command=self.select_folder)
@@ -81,7 +132,7 @@ class ImageApp:
         self.folder_label = ttk.Label(source_frame, text="Ninguna carpeta seleccionada")
         self.folder_label.grid(row=1, column=0, sticky="w", pady=(8, 0))
 
-        algorithm_frame = ttk.LabelFrame(toolbar, text="Procesamiento", padding=(8, 4))
+        algorithm_frame = ttk.LabelFrame(toolbar, text="Procesamiento", padding=(8, 6))
         algorithm_frame.grid(row=0, column=1, sticky="ew", padx=8)
         algorithm_frame.columnconfigure(1, weight=1)
         ttk.Label(algorithm_frame, text="Algoritmo:").grid(row=0, column=0, sticky="w")
@@ -104,8 +155,12 @@ class ImageApp:
         self.algorithm_combo.bind("<<ComboboxSelected>>", self._on_algorithm_change)
         self.process_button = ttk.Button(algorithm_frame, text="Procesar", command=self.process_current_image)
         self.process_button.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(6, 0))
-        self.batch_button = ttk.Button(algorithm_frame, text="Batch carpeta", command=self.run_batch_processing)
-        self.batch_button.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(6, 0))
+        self.image_ranking_button = ttk.Button(
+            algorithm_frame,
+            text="Calcular ranking imagen",
+            command=self.calculate_selected_image_ranking,
+        )
+        self.image_ranking_button.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(6, 0))
         self.comparison_refresh_button = ttk.Button(
             algorithm_frame,
             text="Obtener datos globales",
@@ -113,7 +168,7 @@ class ImageApp:
         )
         self.comparison_refresh_button.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(6, 0))
 
-        params_frame = ttk.LabelFrame(toolbar, text="Parámetros", padding=(8, 4))
+        params_frame = ttk.LabelFrame(toolbar, text="Parámetros", padding=(8, 6))
         params_frame.grid(row=0, column=2, sticky="ew", padx=(8, 0))
         params_frame.columnconfigure(1, weight=1)
         ttk.Label(params_frame, text="CLAHE clipLimit").grid(row=0, column=0, sticky="w")
@@ -145,7 +200,19 @@ class ImageApp:
         list_frame.columnconfigure(0, weight=1)
         list_frame.rowconfigure(0, weight=1)
 
-        self.image_listbox = tk.Listbox(list_frame, activestyle="dotbox")
+        self.image_listbox = tk.Listbox(
+            list_frame,
+            activestyle="dotbox",
+            bg=self.bg_panel,
+            fg=self.text_main,
+            selectbackground=self.accent_gold_soft,
+            selectforeground=self.text_main,
+            highlightthickness=1,
+            highlightbackground=self.bg_border,
+            highlightcolor=self.accent_gold,
+            relief="flat",
+            borderwidth=0,
+        )
         self.image_listbox.grid(row=0, column=0, sticky="nsew")
         self.image_listbox.bind("<<ListboxSelect>>", self.on_image_selected)
 
@@ -158,7 +225,7 @@ class ImageApp:
         right_panel.columnconfigure(0, weight=1)
         right_panel.rowconfigure(0, weight=1)
 
-        self.right_canvas = tk.Canvas(right_panel, highlightthickness=0)
+        self.right_canvas = tk.Canvas(right_panel, highlightthickness=0, bg=self.bg_main, bd=0)
         self.right_canvas.grid(row=0, column=0, sticky="nsew")
 
         self.right_scrollbar = ttk.Scrollbar(right_panel, orient="vertical", command=self.right_canvas.yview)
@@ -183,16 +250,17 @@ class ImageApp:
         preview_frame.columnconfigure(1, weight=1)
         preview_frame.rowconfigure(1, weight=1)
         preview_frame.rowconfigure(3, weight=1)
+        preview_frame.rowconfigure(4, weight=0)
 
         ttk.Label(preview_frame, text="Histograma original").grid(row=0, column=0, sticky="w", pady=(0, 5))
         ttk.Label(preview_frame, text="Imagen original").grid(row=0, column=1, sticky="w", pady=(0, 5))
 
-        self.histogram_container = tk.Frame(preview_frame, bd=1, relief="solid")
+        self.histogram_container = tk.Frame(preview_frame, bd=1, relief="solid", bg=self.bg_panel)
         self.histogram_container.grid(row=1, column=0, sticky="nsew", padx=(0, 8), pady=(0, 6))
         self.histogram_container.columnconfigure(0, weight=1)
         self.histogram_container.rowconfigure(0, weight=1)
 
-        self.original_container = tk.Frame(preview_frame, bd=1, relief="solid")
+        self.original_container = tk.Frame(preview_frame, bd=1, relief="solid", bg=self.bg_panel)
         self.original_container.grid(row=1, column=1, sticky="nsew", pady=(0, 6))
         self.original_container.columnconfigure(0, weight=1)
         self.original_container.rowconfigure(0, weight=1)
@@ -200,49 +268,50 @@ class ImageApp:
         ttk.Label(preview_frame, text="Histograma procesado").grid(row=2, column=0, sticky="w", pady=(0, 5))
         ttk.Label(preview_frame, text="Imagen procesada").grid(row=2, column=1, sticky="w", pady=(0, 5))
 
-        self.processed_histogram_container = tk.Frame(preview_frame, bd=1, relief="solid")
+        self.processed_histogram_container = tk.Frame(preview_frame, bd=1, relief="solid", bg=self.bg_panel)
         self.processed_histogram_container.grid(row=3, column=0, sticky="nsew", padx=(0, 8), pady=(0, 6))
         self.processed_histogram_container.columnconfigure(0, weight=1)
         self.processed_histogram_container.rowconfigure(0, weight=1)
 
-        self.processed_container = tk.Frame(preview_frame, bd=1, relief="solid")
+        self.processed_container = tk.Frame(preview_frame, bd=1, relief="solid", bg=self.bg_panel)
         self.processed_container.grid(row=3, column=1, sticky="nsew", pady=(0, 6))
         self.processed_container.columnconfigure(0, weight=1)
         self.processed_container.rowconfigure(0, weight=1)
 
-        metrics_frame = ttk.LabelFrame(right_panel, text="Métricas comparativas", padding=(8, 4))
-        metrics_frame.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(0, 6))
-        metrics_frame.columnconfigure(1, weight=1)
+        self.metrics_frame = ttk.LabelFrame(preview_frame, text="Métricas comparativas", padding=(8, 4))
+        self.metrics_frame.grid(row=4, column=0, columnspan=2, sticky="ew", pady=(0, 6))
+        self.metrics_frame.columnconfigure(1, weight=1)
+        self.metrics_frame.grid_remove()
 
-        ttk.Label(metrics_frame, text="Desviación estándar original:").grid(row=0, column=0, sticky="w")
-        self.original_std_value_label = ttk.Label(metrics_frame, text="-")
+        ttk.Label(self.metrics_frame, text="Desviación estándar original:").grid(row=0, column=0, sticky="w")
+        self.original_std_value_label = ttk.Label(self.metrics_frame, text="-")
         self.original_std_value_label.grid(row=0, column=1, sticky="w", padx=(10, 0))
 
-        ttk.Label(metrics_frame, text="Desviación estándar procesada:").grid(row=1, column=0, sticky="w")
-        self.processed_std_value_label = ttk.Label(metrics_frame, text="-")
+        ttk.Label(self.metrics_frame, text="Desviación estándar procesada:").grid(row=1, column=0, sticky="w")
+        self.processed_std_value_label = ttk.Label(self.metrics_frame, text="-")
         self.processed_std_value_label.grid(row=1, column=1, sticky="w", padx=(10, 0))
 
-        ttk.Label(metrics_frame, text="AMBE:").grid(row=2, column=0, sticky="w")
-        self.ambe_value_label = ttk.Label(metrics_frame, text="-")
+        ttk.Label(self.metrics_frame, text="AMBE:").grid(row=2, column=0, sticky="w")
+        self.ambe_value_label = ttk.Label(self.metrics_frame, text="-")
         self.ambe_value_label.grid(row=2, column=1, sticky="w", padx=(10, 0))
 
-        ttk.Label(metrics_frame, text="PSNR:").grid(row=3, column=0, sticky="w")
-        self.psnr_value_label = ttk.Label(metrics_frame, text="-")
+        ttk.Label(self.metrics_frame, text="PSNR:").grid(row=3, column=0, sticky="w")
+        self.psnr_value_label = ttk.Label(self.metrics_frame, text="-")
         self.psnr_value_label.grid(row=3, column=1, sticky="w", padx=(10, 0))
 
-        self.evaluation_label = ttk.Label(right_panel, text="Evaluación: -", wraplength=620, justify="left")
-        self.evaluation_label.grid(row=2, column=0, columnspan=2, sticky="w", pady=(0, 4))
+        self.evaluation_label = ttk.Label(preview_frame, text="Evaluación: -", wraplength=620, justify="left")
+        self.evaluation_label.grid(row=5, column=0, columnspan=2, sticky="w", pady=(0, 4))
 
         self.helper_label = ttk.Label(
-            right_panel,
+            preview_frame,
             text="HE: sin parámetros. CLAHE: usa clipLimit y tileGridSize. Morfología: usa kernel.",
             wraplength=620,
             justify="left",
         )
-        self.helper_label.grid(row=3, column=0, columnspan=2, sticky="w", pady=(0, 4))
+        self.helper_label.grid(row=6, column=0, columnspan=2, sticky="w", pady=(0, 4))
 
-        self.experiment_frame = ttk.LabelFrame(right_panel, text="Experimento Top-Hat", padding=(8, 4))
-        self.experiment_frame.grid(row=4, column=0, columnspan=2, sticky="ew", pady=(0, 4))
+        self.experiment_frame = ttk.LabelFrame(preview_frame, text="Experimento Top-Hat", padding=(8, 4))
+        self.experiment_frame.grid(row=7, column=0, columnspan=2, sticky="ew", pady=(0, 4))
         self.experiment_frame.grid_remove()
         self.experiment_frame.columnconfigure(0, weight=1)
         self.experiment_button = ttk.Button(
@@ -273,21 +342,15 @@ class ImageApp:
         tree_scrollbar.grid(row=0, column=1, sticky="ns")
         self.kernel_results_tree.configure(yscrollcommand=tree_scrollbar.set)
 
-        self.comparison_frame = ttk.LabelFrame(right_panel, text="Vista comparativa global", padding=(8, 4))
-        self.comparison_frame.grid(row=5, column=0, columnspan=2, sticky="ew", pady=(0, 4))
-        self.comparison_frame.grid_remove()
-        self.comparison_frame.columnconfigure(0, weight=1)
-        self.comparison_frame.columnconfigure(1, weight=1)
+        self.global_comparison_frame = ttk.LabelFrame(preview_frame, text="Comparativa global", padding=(8, 4))
+        self.global_comparison_frame.grid(row=8, column=0, columnspan=2, sticky="ew", pady=(0, 4))
+        self.global_comparison_frame.grid_remove()
+        self.global_comparison_frame.columnconfigure(0, weight=1)
 
-        global_table_frame = ttk.Frame(self.comparison_frame)
-        global_table_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
+        global_table_frame = ttk.Frame(self.global_comparison_frame)
+        global_table_frame.grid(row=0, column=0, sticky="nsew")
         global_table_frame.columnconfigure(0, weight=1)
         global_table_frame.rowconfigure(0, weight=1)
-
-        image_table_frame = ttk.Frame(self.comparison_frame)
-        image_table_frame.grid(row=0, column=1, sticky="nsew")
-        image_table_frame.columnconfigure(0, weight=1)
-        image_table_frame.rowconfigure(0, weight=1)
 
         global_columns = ("rank", "algorithm", "avg_processed_std", "avg_ambe", "avg_psnr", "ranking_score")
         self.global_comparison_tree = ttk.Treeview(global_table_frame, columns=global_columns, show="headings", height=6)
@@ -306,6 +369,16 @@ class ImageApp:
         global_scroll.grid(row=0, column=1, sticky="ns")
         self.global_comparison_tree.configure(yscrollcommand=global_scroll.set)
 
+        self.image_comparison_frame = ttk.LabelFrame(preview_frame, text="Ranking de imagen", padding=(8, 4))
+        self.image_comparison_frame.grid(row=9, column=0, columnspan=2, sticky="ew", pady=(0, 4))
+        self.image_comparison_frame.grid_remove()
+        self.image_comparison_frame.columnconfigure(0, weight=1)
+
+        image_table_frame = ttk.Frame(self.image_comparison_frame)
+        image_table_frame.grid(row=0, column=0, sticky="nsew")
+        image_table_frame.columnconfigure(0, weight=1)
+        image_table_frame.rowconfigure(0, weight=1)
+
         image_columns = ("algorithm", "original_std", "processed_std", "ambe", "psnr")
         self.image_comparison_tree = ttk.Treeview(image_table_frame, columns=image_columns, show="headings", height=6)
         for column, title, width in [
@@ -322,7 +395,14 @@ class ImageApp:
         image_scroll.grid(row=0, column=1, sticky="ns")
         self.image_comparison_tree.configure(yscrollcommand=image_scroll.set)
 
-        self.status_label = ttk.Label(self.root, text="Listo", anchor="w")
+        if self.global_comparison_tree is not None:
+            self.global_comparison_tree.tag_configure("odd", background=self.bg_panel_alt)
+            self.global_comparison_tree.tag_configure("even", background=self.bg_panel)
+        if self.image_comparison_tree is not None:
+            self.image_comparison_tree.tag_configure("odd", background=self.bg_panel_alt)
+            self.image_comparison_tree.tag_configure("even", background=self.bg_panel)
+
+        self.status_label = ttk.Label(self.root, text="Listo", anchor="w", style="Header.TLabel")
         self.status_label.grid(row=2, column=0, columnspan=2, sticky="ew", padx=10, pady=(0, 10))
 
         self._show_placeholder(self.original_container, "Selecciona una carpeta para comenzar")
@@ -330,6 +410,7 @@ class ImageApp:
         self._show_placeholder(self.histogram_container, "Selecciona una imagen para ver su histograma")
         self._show_placeholder(self.processed_histogram_container, "El histograma procesado aparecerá aquí")
         self._update_parameter_visibility()
+        self._update_metrics_visibility(False)
         self._update_experiment_visibility()
 
     def run(self) -> None:
@@ -349,6 +430,7 @@ class ImageApp:
         folder_path = Path(selected_folder)
         self.current_folder = folder_path
         self.folder_label.configure(text=str(folder_path))
+        self.single_image_ranking_csv = Path(__file__).resolve().parent.parent / "results" / f"{folder_path.name}_ranking_imagen.csv"
 
         self.image_paths = list_image_files(folder_path)
         self._refresh_image_list()
@@ -394,11 +476,13 @@ class ImageApp:
         self._show_histogram(image, image_path.name, self.histogram_container)
         self._set_comparative_metrics(None)
         self.status_label.configure(text=f"Imagen cargada: {image_path.name}")
-        self.refresh_image_comparison_view()
-        if self.algorithm_var.get() in {"White Top-Hat", "Black Top-Hat", "Enhanced Top-Hat"}:
-            self.experiment_frame.grid()
-        else:
+        if self.experiment_frame is not None:
             self.experiment_frame.grid_remove()
+        if self.image_comparison_frame is not None:
+            self.image_comparison_frame.grid_remove()
+        if self.image_comparison_tree is not None:
+            for item in self.image_comparison_tree.get_children():
+                self.image_comparison_tree.delete(item)
 
     def _clear_preview(self, container: tk.Widget) -> None:
         """Remove the current preview widget if it exists."""
@@ -424,13 +508,16 @@ class ImageApp:
         self._show_placeholder(self.histogram_container, "Selecciona una imagen para ver su histograma")
         self._show_placeholder(self.processed_histogram_container, "Selecciona una imagen para ver el histograma procesado")
         self._set_comparative_metrics(None)
+        self._update_metrics_visibility(False)
         if self.image_comparison_tree is not None:
             for item in self.image_comparison_tree.get_children():
                 self.image_comparison_tree.delete(item)
         if self.experiment_frame is not None:
             self.experiment_frame.grid_remove()
-        if self.comparison_frame is not None:
-            self.comparison_frame.grid_remove()
+        if self.global_comparison_frame is not None:
+            self.global_comparison_frame.grid_remove()
+        if self.image_comparison_frame is not None:
+            self.image_comparison_frame.grid_remove()
 
     def _show_placeholder(self, container: tk.Widget, text: str) -> None:
         """Show a simple text placeholder in the preview area."""
@@ -438,7 +525,7 @@ class ImageApp:
         for child in container.winfo_children():
             child.destroy()
 
-        label = ttk.Label(container, text=text, anchor="center", justify="center")
+        label = ttk.Label(container, text=text, anchor="center", justify="center", style="Header.TLabel")
         label.grid(row=0, column=0, sticky="nsew", padx=20, pady=20)
 
     def _show_image(self, image_bgr, title: str) -> None:
@@ -616,17 +703,26 @@ class ImageApp:
         else:
             self.helper_label.configure(text="HE activo: no requiere parámetros adicionales. Pulsa Procesar.")
 
-    def _update_experiment_visibility(self) -> None:
-        """Show the kernel experiment only for Top-Hat algorithms."""
+    def _update_experiment_visibility(self, processed: bool = False) -> None:
+        """Show the kernel experiment only after processing a Top-Hat image."""
         is_morphology = self.algorithm_var.get() in {"White Top-Hat", "Black Top-Hat", "Enhanced Top-Hat"}
         state = "normal" if is_morphology else "disabled"
         if self.experiment_button is not None:
             self.experiment_button.configure(state=state)
         if self.experiment_frame is not None:
-            if is_morphology and self.selected_image is not None:
+            if is_morphology and processed and self.selected_image is not None:
                 self.experiment_frame.grid()
             else:
                 self.experiment_frame.grid_remove()
+
+    def _update_metrics_visibility(self, visible: bool) -> None:
+        """Show comparative metrics only after a processed image exists."""
+        if self.metrics_frame is None:
+            return
+        if visible:
+            self.metrics_frame.grid()
+        else:
+            self.metrics_frame.grid_remove()
 
     def process_current_image(self) -> None:
         """Process the currently selected image using the chosen algorithm."""
@@ -646,17 +742,17 @@ class ImageApp:
             self.processed_histogram_container,
         )
         self._set_comparative_metrics(self.selected_image, processed_image)
+        self._update_metrics_visibility(True)
         self.status_label.configure(
             text=f"Procesado con {algorithm_name}: {self.selected_image_name}"
         )
+        self._update_experiment_visibility(processed=True)
 
     def show_global_comparison_view(self) -> None:
         """Show and populate the global comparison view."""
         if self.current_folder is None:
             messagebox.showinfo("Comparativa", "Primero selecciona una carpeta.")
             return
-        if self.comparison_frame is not None:
-            self.comparison_frame.grid()
         self.refresh_global_comparison_view()
 
     def run_batch_processing(self) -> None:
@@ -689,6 +785,8 @@ class ImageApp:
             return
 
         global_rows, _ = build_folder_comparison(self.current_folder, BatchConfig())
+        if self.global_comparison_frame is not None:
+            self.global_comparison_frame.grid()
         for item in self.global_comparison_tree.get_children():
             self.global_comparison_tree.delete(item)
         for row in global_rows:
@@ -703,16 +801,21 @@ class ImageApp:
                     row["avg_psnr"],
                     row["ranking_score"],
                 ),
+                tags=("odd" if row["rank"] % 2 else "even",),
             )
-        self.refresh_image_comparison_view()
 
     def refresh_image_comparison_view(self) -> None:
         """Refresh the per-image comparison table for the selected image."""
         if self.current_folder is None or self.selected_image_name is None or self.image_comparison_tree is None:
             return
 
-        _, per_image_rows = build_folder_comparison(self.current_folder, BatchConfig())
-        rows = per_image_rows.get(self.selected_image_name, [])
+        rows = (
+            build_image_comparison(self.selected_image, self._current_batch_config())
+            if self.selected_image is not None
+            else []
+        )
+        if self.image_comparison_frame is not None:
+            self.image_comparison_frame.grid()
         for item in self.image_comparison_tree.get_children():
             self.image_comparison_tree.delete(item)
 
@@ -727,7 +830,23 @@ class ImageApp:
                     row["ambe"],
                     row["psnr"],
                 ),
+                tags=("odd" if row["rank"] % 2 else "even",),
             )
+
+    def calculate_selected_image_ranking(self) -> None:
+        """Calculate and save the ranking for the currently selected image."""
+        if self.selected_image is None or self.selected_image_name is None or self.single_image_ranking_csv is None:
+            messagebox.showinfo("Ranking", "Primero selecciona una imagen.")
+            return
+
+        rows = build_image_comparison(self.selected_image, self._current_batch_config())
+        append_image_ranking_csv(self.single_image_ranking_csv, self.selected_image_name, rows)
+        if self.image_comparison_frame is not None:
+            self.image_comparison_frame.grid()
+        self.refresh_image_comparison_view()
+        self.status_label.configure(
+            text=f"Ranking calculado y guardado para {self.selected_image_name}"
+        )
 
     def run_top_hat_kernel_experiment(self) -> None:
         """Run the selected Top-Hat algorithm across multiple kernel sizes."""
@@ -838,3 +957,11 @@ class ImageApp:
         )
         brightness_text = evaluate_brightness_preservation(ambe_value)
         self.evaluation_label.configure(text=f"Evaluación: {contrast_text} {brightness_text}")
+
+    def _current_batch_config(self) -> BatchConfig:
+        """Build a batch-style config from the current UI parameter values."""
+        return BatchConfig(
+            clahe_clip_limit=self._read_clip_limit(),
+            clahe_tile_grid_size=self._read_tile_grid_size(),
+            top_hat_kernel_size=self._read_kernel_size(),
+        )

@@ -122,16 +122,85 @@ def build_folder_comparison(folder_path: str | Path, config: BatchConfig | None 
     return global_rows, per_image_rows
 
 
+def build_image_comparison(image_bgr: np.ndarray, config: BatchConfig | None = None) -> list[dict[str, object]]:
+    """Build ranking rows for a single image across all supported algorithms."""
+    config = config or BatchConfig()
+    variants = _build_variants(config)
+    original_metrics = calculate_basic_metrics(image_bgr)
+    rows: list[dict[str, object]] = []
+
+    for variant in variants:
+        processed_image = _apply_batch_algorithm(image_bgr, variant, config)
+        processed_metrics = calculate_basic_metrics(processed_image)
+        ambe_value = calculate_ambe(image_bgr, processed_image)
+        psnr_value = calculate_psnr(image_bgr, processed_image)
+        std_delta = processed_metrics["desviacion_estandar"] - original_metrics["desviacion_estandar"]
+        contrast_effect = "increase" if std_delta > 0 else "decrease" if std_delta < 0 else "neutral"
+        ranking_score = (processed_metrics["desviacion_estandar"] * 0.5) + (psnr_value if not np.isinf(psnr_value) else 0.0) * 0.05 - (ambe_value * 0.5)
+
+        rows.append(
+            {
+                "algorithm": variant["label"],
+                "original_std": round(original_metrics["desviacion_estandar"], 4),
+                "processed_std": round(processed_metrics["desviacion_estandar"], 4),
+                "std_delta": round(std_delta, 4),
+                "ambe": round(ambe_value, 4),
+                "psnr": "Inf" if np.isinf(psnr_value) else round(psnr_value, 4),
+                "contrast_effect": contrast_effect,
+                "ranking_score": round(ranking_score, 4),
+            }
+        )
+
+    rows.sort(key=lambda row: row["ranking_score"], reverse=True)
+    for index, row in enumerate(rows, start=1):
+        row["rank"] = index
+    return rows
+
+
+def append_image_ranking_csv(csv_path: str | Path, image_name: str, rows: list[dict[str, object]]) -> None:
+    """Append a single-image ranking block to a CSV file."""
+    csv_path = Path(csv_path)
+    csv_path.parent.mkdir(parents=True, exist_ok=True)
+    write_header = not csv_path.exists()
+
+    with csv_path.open("a", newline="", encoding="utf-8") as csv_file:
+        writer = csv.writer(csv_file)
+        if write_header:
+            writer.writerow(["image_name", "rank", "algorithm", "original_std", "processed_std", "std_delta", "ambe", "psnr", "contrast_effect", "ranking_score"])
+
+        writer.writerow([image_name, "", "", "", "", "", "", "", "", ""])
+        for row in rows:
+            writer.writerow(
+                [
+                    "",
+                    row["rank"],
+                    row["algorithm"],
+                    row["original_std"],
+                    row["processed_std"],
+                    row["std_delta"],
+                    row["ambe"],
+                    row["psnr"],
+                    row["contrast_effect"],
+                    row["ranking_score"],
+                ]
+            )
+
+
 def _build_variants(config: BatchConfig) -> list[dict[str, object]]:
     """Create algorithm variants to evaluate in batch mode."""
     variants: list[dict[str, object]] = [
         {"algorithm": "HE", "label": "HE"},
+        {"algorithm": "CLAHE", "label": f"CLAHE clip {config.clahe_clip_limit:g}", "clip_limit": config.clahe_clip_limit},
         {"algorithm": "CLAHE", "label": "CLAHE clip 1.5", "clip_limit": 1.5},
-        {"algorithm": "CLAHE", "label": "CLAHE clip 2.0", "clip_limit": 2.0},
         {"algorithm": "CLAHE", "label": "CLAHE clip 3.0", "clip_limit": 3.0},
     ]
 
-    for kernel_size in (3, 5, 7):
+    kernel_sizes = [config.top_hat_kernel_size, 3, 5, 7, 9]
+    seen_kernel_sizes: set[int] = set()
+    for kernel_size in kernel_sizes:
+        if kernel_size in seen_kernel_sizes:
+            continue
+        seen_kernel_sizes.add(kernel_size)
         variants.append({"algorithm": "White Top-Hat", "label": f"White Top-Hat {kernel_size}x{kernel_size}", "kernel_size": kernel_size})
         variants.append({"algorithm": "Black Top-Hat", "label": f"Black Top-Hat {kernel_size}x{kernel_size}", "kernel_size": kernel_size})
         variants.append({"algorithm": "Enhanced Top-Hat", "label": f"Enhanced Top-Hat {kernel_size}x{kernel_size}", "kernel_size": kernel_size})
