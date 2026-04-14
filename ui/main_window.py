@@ -14,6 +14,7 @@ from matplotlib.figure import Figure
 
 from core.algorithms import apply_clahe, apply_histogram_equalization, apply_morphological_algorithm
 from core.batch import BatchConfig, run_folder_batch
+from core.batch import build_folder_comparison
 from core.image_loader import list_image_files, load_image
 from core.histograms import calculate_grayscale_histogram
 from core.metrics import (
@@ -53,6 +54,11 @@ class ImageApp:
         self.batch_button: ttk.Button | None = None
         self.experiment_button: ttk.Button | None = None
         self.kernel_results_tree: ttk.Treeview | None = None
+        self.global_comparison_tree: ttk.Treeview | None = None
+        self.image_comparison_tree: ttk.Treeview | None = None
+        self.comparison_refresh_button: ttk.Button | None = None
+        self.comparison_frame: ttk.LabelFrame | None = None
+        self.experiment_frame: ttk.LabelFrame | None = None
 
         self._build_ui()
 
@@ -100,6 +106,12 @@ class ImageApp:
         self.process_button.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(6, 0))
         self.batch_button = ttk.Button(algorithm_frame, text="Batch carpeta", command=self.run_batch_processing)
         self.batch_button.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(6, 0))
+        self.comparison_refresh_button = ttk.Button(
+            algorithm_frame,
+            text="Obtener datos globales",
+            command=self.show_global_comparison_view,
+        )
+        self.comparison_refresh_button.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(6, 0))
 
         params_frame = ttk.LabelFrame(toolbar, text="Parámetros", padding=(8, 4))
         params_frame.grid(row=0, column=2, sticky="ew", padx=(8, 0))
@@ -229,17 +241,18 @@ class ImageApp:
         )
         self.helper_label.grid(row=3, column=0, columnspan=2, sticky="w", pady=(0, 4))
 
-        experiment_frame = ttk.LabelFrame(right_panel, text="Experimento Top-Hat", padding=(8, 4))
-        experiment_frame.grid(row=4, column=0, columnspan=2, sticky="ew", pady=(0, 4))
-        experiment_frame.columnconfigure(0, weight=1)
+        self.experiment_frame = ttk.LabelFrame(right_panel, text="Experimento Top-Hat", padding=(8, 4))
+        self.experiment_frame.grid(row=4, column=0, columnspan=2, sticky="ew", pady=(0, 4))
+        self.experiment_frame.grid_remove()
+        self.experiment_frame.columnconfigure(0, weight=1)
         self.experiment_button = ttk.Button(
-            experiment_frame,
+            self.experiment_frame,
             text="Probar kernels 3-5-7-9",
             command=self.run_top_hat_kernel_experiment,
         )
         self.experiment_button.grid(row=0, column=0, sticky="ew")
 
-        tree_frame = ttk.Frame(experiment_frame)
+        tree_frame = ttk.Frame(self.experiment_frame)
         tree_frame.grid(row=1, column=0, sticky="nsew", pady=(6, 0))
         tree_frame.columnconfigure(0, weight=1)
         tree_frame.rowconfigure(0, weight=1)
@@ -259,6 +272,55 @@ class ImageApp:
         tree_scrollbar = ttk.Scrollbar(tree_frame, orient="vertical", command=self.kernel_results_tree.yview)
         tree_scrollbar.grid(row=0, column=1, sticky="ns")
         self.kernel_results_tree.configure(yscrollcommand=tree_scrollbar.set)
+
+        self.comparison_frame = ttk.LabelFrame(right_panel, text="Vista comparativa global", padding=(8, 4))
+        self.comparison_frame.grid(row=5, column=0, columnspan=2, sticky="ew", pady=(0, 4))
+        self.comparison_frame.grid_remove()
+        self.comparison_frame.columnconfigure(0, weight=1)
+        self.comparison_frame.columnconfigure(1, weight=1)
+
+        global_table_frame = ttk.Frame(self.comparison_frame)
+        global_table_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
+        global_table_frame.columnconfigure(0, weight=1)
+        global_table_frame.rowconfigure(0, weight=1)
+
+        image_table_frame = ttk.Frame(self.comparison_frame)
+        image_table_frame.grid(row=0, column=1, sticky="nsew")
+        image_table_frame.columnconfigure(0, weight=1)
+        image_table_frame.rowconfigure(0, weight=1)
+
+        global_columns = ("rank", "algorithm", "avg_processed_std", "avg_ambe", "avg_psnr", "ranking_score")
+        self.global_comparison_tree = ttk.Treeview(global_table_frame, columns=global_columns, show="headings", height=6)
+        for column, title, width in [
+            ("rank", "#", 40),
+            ("algorithm", "Algoritmo", 180),
+            ("avg_processed_std", "Std proc.", 80),
+            ("avg_ambe", "AMBE", 80),
+            ("avg_psnr", "PSNR", 80),
+            ("ranking_score", "Score", 80),
+        ]:
+            self.global_comparison_tree.heading(column, text=title)
+            self.global_comparison_tree.column(column, width=width, anchor="center")
+        self.global_comparison_tree.grid(row=0, column=0, sticky="nsew")
+        global_scroll = ttk.Scrollbar(global_table_frame, orient="vertical", command=self.global_comparison_tree.yview)
+        global_scroll.grid(row=0, column=1, sticky="ns")
+        self.global_comparison_tree.configure(yscrollcommand=global_scroll.set)
+
+        image_columns = ("algorithm", "original_std", "processed_std", "ambe", "psnr")
+        self.image_comparison_tree = ttk.Treeview(image_table_frame, columns=image_columns, show="headings", height=6)
+        for column, title, width in [
+            ("algorithm", "Algoritmo", 180),
+            ("original_std", "Std orig.", 80),
+            ("processed_std", "Std proc.", 80),
+            ("ambe", "AMBE", 80),
+            ("psnr", "PSNR", 80),
+        ]:
+            self.image_comparison_tree.heading(column, text=title)
+            self.image_comparison_tree.column(column, width=width, anchor="center")
+        self.image_comparison_tree.grid(row=0, column=0, sticky="nsew")
+        image_scroll = ttk.Scrollbar(image_table_frame, orient="vertical", command=self.image_comparison_tree.yview)
+        image_scroll.grid(row=0, column=1, sticky="ns")
+        self.image_comparison_tree.configure(yscrollcommand=image_scroll.set)
 
         self.status_label = ttk.Label(self.root, text="Listo", anchor="w")
         self.status_label.grid(row=2, column=0, columnspan=2, sticky="ew", padx=10, pady=(0, 10))
@@ -293,8 +355,7 @@ class ImageApp:
 
         if self.image_paths:
             self.status_label.configure(text=f"{len(self.image_paths)} imagen(es) detectada(s)")
-            self.image_listbox.selection_set(0)
-            self.image_listbox.event_generate("<<ListboxSelect>>")
+            self._clear_selection_and_views()
         else:
             self.status_label.configure(text="No se encontraron imágenes compatibles")
             self._show_placeholder("La carpeta no contiene imágenes compatibles")
@@ -333,6 +394,11 @@ class ImageApp:
         self._show_histogram(image, image_path.name, self.histogram_container)
         self._set_comparative_metrics(None)
         self.status_label.configure(text=f"Imagen cargada: {image_path.name}")
+        self.refresh_image_comparison_view()
+        if self.algorithm_var.get() in {"White Top-Hat", "Black Top-Hat", "Enhanced Top-Hat"}:
+            self.experiment_frame.grid()
+        else:
+            self.experiment_frame.grid_remove()
 
     def _clear_preview(self, container: tk.Widget) -> None:
         """Remove the current preview widget if it exists."""
@@ -348,6 +414,23 @@ class ImageApp:
         if container is self.processed_histogram_container and self.processed_histogram_canvas is not None:
             self.processed_histogram_canvas.get_tk_widget().destroy()
             self.processed_histogram_canvas = None
+
+    def _clear_selection_and_views(self) -> None:
+        """Clear selection-dependent views when a folder is loaded."""
+        self.selected_image = None
+        self.selected_image_name = None
+        self._show_placeholder(self.original_container, "Selecciona una imagen para comenzar")
+        self._show_placeholder(self.processed_container, "Selecciona una imagen para ver el resultado")
+        self._show_placeholder(self.histogram_container, "Selecciona una imagen para ver su histograma")
+        self._show_placeholder(self.processed_histogram_container, "Selecciona una imagen para ver el histograma procesado")
+        self._set_comparative_metrics(None)
+        if self.image_comparison_tree is not None:
+            for item in self.image_comparison_tree.get_children():
+                self.image_comparison_tree.delete(item)
+        if self.experiment_frame is not None:
+            self.experiment_frame.grid_remove()
+        if self.comparison_frame is not None:
+            self.comparison_frame.grid_remove()
 
     def _show_placeholder(self, container: tk.Widget, text: str) -> None:
         """Show a simple text placeholder in the preview area."""
@@ -539,6 +622,11 @@ class ImageApp:
         state = "normal" if is_morphology else "disabled"
         if self.experiment_button is not None:
             self.experiment_button.configure(state=state)
+        if self.experiment_frame is not None:
+            if is_morphology and self.selected_image is not None:
+                self.experiment_frame.grid()
+            else:
+                self.experiment_frame.grid_remove()
 
     def process_current_image(self) -> None:
         """Process the currently selected image using the chosen algorithm."""
@@ -561,6 +649,15 @@ class ImageApp:
         self.status_label.configure(
             text=f"Procesado con {algorithm_name}: {self.selected_image_name}"
         )
+
+    def show_global_comparison_view(self) -> None:
+        """Show and populate the global comparison view."""
+        if self.current_folder is None:
+            messagebox.showinfo("Comparativa", "Primero selecciona una carpeta.")
+            return
+        if self.comparison_frame is not None:
+            self.comparison_frame.grid()
+        self.refresh_global_comparison_view()
 
     def run_batch_processing(self) -> None:
         """Process all JPG images in the selected folder with all algorithms."""
@@ -585,6 +682,52 @@ class ImageApp:
             f"Comparativa global: {result_paths['comparison_csv']}",
         )
         self.status_label.configure(text=f"Batch completado para {self.current_folder.name}")
+
+    def refresh_global_comparison_view(self) -> None:
+        """Refresh the global comparison table for the current folder."""
+        if self.current_folder is None or self.global_comparison_tree is None:
+            return
+
+        global_rows, _ = build_folder_comparison(self.current_folder, BatchConfig())
+        for item in self.global_comparison_tree.get_children():
+            self.global_comparison_tree.delete(item)
+        for row in global_rows:
+            self.global_comparison_tree.insert(
+                "",
+                "end",
+                values=(
+                    row["rank"],
+                    row["algorithm"],
+                    row["avg_processed_std"],
+                    row["avg_ambe"],
+                    row["avg_psnr"],
+                    row["ranking_score"],
+                ),
+            )
+        self.refresh_image_comparison_view()
+
+    def refresh_image_comparison_view(self) -> None:
+        """Refresh the per-image comparison table for the selected image."""
+        if self.current_folder is None or self.selected_image_name is None or self.image_comparison_tree is None:
+            return
+
+        _, per_image_rows = build_folder_comparison(self.current_folder, BatchConfig())
+        rows = per_image_rows.get(self.selected_image_name, [])
+        for item in self.image_comparison_tree.get_children():
+            self.image_comparison_tree.delete(item)
+
+        for row in rows:
+            self.image_comparison_tree.insert(
+                "",
+                "end",
+                values=(
+                    row["algorithm"],
+                    row["original_std"],
+                    row["processed_std"],
+                    row["ambe"],
+                    row["psnr"],
+                ),
+            )
 
     def run_top_hat_kernel_experiment(self) -> None:
         """Run the selected Top-Hat algorithm across multiple kernel sizes."""

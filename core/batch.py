@@ -70,6 +70,58 @@ def run_folder_batch(folder_path: str | Path, output_root: str | Path, config: B
     }
 
 
+def build_folder_comparison(folder_path: str | Path, config: BatchConfig | None = None) -> tuple[list[dict[str, object]], dict[str, list[dict[str, object]]]]:
+    """Build global and per-image comparison rows without writing files."""
+    config = config or BatchConfig()
+    folder = Path(folder_path)
+    image_files = list_image_files(folder)
+    variants = _build_variants(config)
+
+    algorithm_totals: dict[str, dict[str, float]] = {
+        variant["label"]: {"count": 0.0, "original_std": 0.0, "processed_std": 0.0, "ambe": 0.0, "psnr": 0.0}
+        for variant in variants
+    }
+    psnr_counts: dict[str, int] = {variant["label"]: 0 for variant in variants}
+    per_image_rows: dict[str, list[dict[str, object]]] = {}
+
+    for image_path in image_files:
+        image = load_image(image_path)
+        if image is None:
+            continue
+
+        original_metrics = calculate_basic_metrics(image)
+        image_rows: list[dict[str, object]] = []
+        for variant in variants:
+            processed_image = _apply_batch_algorithm(image, variant, config)
+            processed_metrics = calculate_basic_metrics(processed_image)
+            ambe_value = calculate_ambe(image, processed_image)
+            psnr_value = calculate_psnr(image, processed_image)
+
+            totals = algorithm_totals[variant["label"]]
+            totals["count"] += 1
+            totals["original_std"] += original_metrics["desviacion_estandar"]
+            totals["processed_std"] += processed_metrics["desviacion_estandar"]
+            totals["ambe"] += ambe_value
+            if not np.isinf(psnr_value):
+                totals["psnr"] += psnr_value
+                psnr_counts[variant["label"]] += 1
+
+            image_rows.append(
+                {
+                    "algorithm": variant["label"],
+                    "original_std": round(original_metrics["desviacion_estandar"], 4),
+                    "processed_std": round(processed_metrics["desviacion_estandar"], 4),
+                    "ambe": round(ambe_value, 4),
+                    "psnr": "Inf" if np.isinf(psnr_value) else round(psnr_value, 4),
+                }
+            )
+
+        per_image_rows[image_path.name] = image_rows
+
+    global_rows = _build_comparison_rows(algorithm_totals, psnr_counts)
+    return global_rows, per_image_rows
+
+
 def _build_variants(config: BatchConfig) -> list[dict[str, object]]:
     """Create algorithm variants to evaluate in batch mode."""
     variants: list[dict[str, object]] = [
@@ -152,4 +204,3 @@ def _write_csv(csv_path: Path, rows: list[dict[str, object]]) -> None:
         writer = csv.DictWriter(csv_file, fieldnames=list(rows[0].keys()))
         writer.writeheader()
         writer.writerows(rows)
-
