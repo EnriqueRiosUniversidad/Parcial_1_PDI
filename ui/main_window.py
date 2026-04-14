@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import csv
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
@@ -29,8 +30,8 @@ class ImageApp:
     def __init__(self) -> None:
         self.root = tk.Tk()
         self.root.title("Medical Contrast Explorer")
-        self.root.geometry("1100x700")
-        self.root.minsize(900, 600)
+        self.root.geometry("1280x820")
+        self.root.minsize(1100, 700)
 
         self.current_folder: Path | None = None
         self.image_paths: list[Path] = []
@@ -42,11 +43,14 @@ class ImageApp:
         self.processed_histogram_canvas: FigureCanvasTkAgg | None = None
         self.right_canvas: tk.Canvas | None = None
         self.right_scrollbar: ttk.Scrollbar | None = None
+        self.active_scroll_canvas: tk.Canvas | None = None
         self.clip_limit_var = tk.StringVar(value="2.0")
         self.tile_grid_x_var = tk.StringVar(value="8")
         self.tile_grid_y_var = tk.StringVar(value="8")
         self.kernel_size_var = tk.StringVar(value="15")
         self.process_button: ttk.Button | None = None
+        self.experiment_button: ttk.Button | None = None
+        self.kernel_results_tree: ttk.Treeview | None = None
 
         self._build_ui()
 
@@ -55,18 +59,24 @@ class ImageApp:
         self.root.columnconfigure(1, weight=1)
         self.root.rowconfigure(1, weight=1)
 
-        toolbar = ttk.Frame(self.root, padding=10)
+        toolbar = ttk.Frame(self.root, padding=(10, 6, 10, 4))
         toolbar.grid(row=0, column=0, columnspan=2, sticky="ew")
+        toolbar.columnconfigure(0, weight=1)
         toolbar.columnconfigure(1, weight=1)
+        toolbar.columnconfigure(2, weight=1)
 
-        select_button = ttk.Button(
-            toolbar,
-            text="Seleccionar carpeta",
-            command=self.select_folder,
-        )
+        source_frame = ttk.LabelFrame(toolbar, text="Origen", padding=(8, 4))
+        source_frame.grid(row=0, column=0, sticky="ew", padx=(0, 8))
+        source_frame.columnconfigure(0, weight=1)
+        select_button = ttk.Button(source_frame, text="Abrir carpeta", command=self.select_folder)
         select_button.grid(row=0, column=0, sticky="w")
+        self.folder_label = ttk.Label(source_frame, text="Ninguna carpeta seleccionada")
+        self.folder_label.grid(row=1, column=0, sticky="w", pady=(8, 0))
 
-        ttk.Label(toolbar, text="Algoritmo:").grid(row=0, column=1, sticky="e", padx=(20, 5))
+        algorithm_frame = ttk.LabelFrame(toolbar, text="Procesamiento", padding=(8, 4))
+        algorithm_frame.grid(row=0, column=1, sticky="ew", padx=8)
+        algorithm_frame.columnconfigure(1, weight=1)
+        ttk.Label(algorithm_frame, text="Algoritmo:").grid(row=0, column=0, sticky="w")
         self.algorithm_var = tk.StringVar(value="HE")
         self.algorithm_options = [
             "HE",
@@ -76,39 +86,36 @@ class ImageApp:
             "Enhanced Top-Hat",
         ]
         self.algorithm_combo = ttk.Combobox(
-            toolbar,
+            algorithm_frame,
             textvariable=self.algorithm_var,
             values=self.algorithm_options,
             state="readonly",
-            width=18,
+            width=20,
         )
-        self.algorithm_combo.grid(row=0, column=2, sticky="w")
+        self.algorithm_combo.grid(row=0, column=1, sticky="w", padx=(8, 0))
         self.algorithm_combo.bind("<<ComboboxSelected>>", self._on_algorithm_change)
+        self.process_button = ttk.Button(algorithm_frame, text="Procesar", command=self.process_current_image)
+        self.process_button.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(6, 0))
 
-        self.process_button = ttk.Button(toolbar, text="Procesar", command=self.process_current_image)
-        self.process_button.grid(row=0, column=3, sticky="w", padx=(20, 0))
-
-        ttk.Label(toolbar, text="clipLimit:").grid(row=1, column=0, sticky="e", pady=(8, 0))
-        self.clip_limit_entry = ttk.Entry(toolbar, textvariable=self.clip_limit_var, width=8)
-        self.clip_limit_entry.grid(row=1, column=1, sticky="w", pady=(8, 0))
-
-        ttk.Label(toolbar, text="tileGridSize:").grid(row=1, column=2, sticky="e", padx=(20, 5), pady=(8, 0))
-        tile_frame = ttk.Frame(toolbar)
-        tile_frame.grid(row=1, column=3, sticky="w", pady=(8, 0))
+        params_frame = ttk.LabelFrame(toolbar, text="Parámetros", padding=(8, 4))
+        params_frame.grid(row=0, column=2, sticky="ew", padx=(8, 0))
+        params_frame.columnconfigure(1, weight=1)
+        ttk.Label(params_frame, text="CLAHE clipLimit").grid(row=0, column=0, sticky="w")
+        self.clip_limit_entry = ttk.Entry(params_frame, textvariable=self.clip_limit_var, width=8)
+        self.clip_limit_entry.grid(row=0, column=1, sticky="w", padx=(8, 0))
+        ttk.Label(params_frame, text="CLAHE tileGrid").grid(row=1, column=0, sticky="w", pady=(6, 0))
+        tile_frame = ttk.Frame(params_frame)
+        tile_frame.grid(row=1, column=1, sticky="w", pady=(6, 0))
         self.tile_grid_x_entry = ttk.Entry(tile_frame, textvariable=self.tile_grid_x_var, width=4)
         self.tile_grid_x_entry.grid(row=0, column=0)
         ttk.Label(tile_frame, text="x").grid(row=0, column=1, padx=4)
         self.tile_grid_y_entry = ttk.Entry(tile_frame, textvariable=self.tile_grid_y_var, width=4)
         self.tile_grid_y_entry.grid(row=0, column=2)
+        ttk.Label(params_frame, text="Top-Hat kernel").grid(row=2, column=0, sticky="w", pady=(6, 0))
+        self.kernel_size_entry = ttk.Entry(params_frame, textvariable=self.kernel_size_var, width=8)
+        self.kernel_size_entry.grid(row=2, column=1, sticky="w", padx=(8, 0), pady=(6, 0))
 
-        ttk.Label(toolbar, text="kernel:").grid(row=2, column=0, sticky="e", pady=(8, 0))
-        self.kernel_size_entry = ttk.Entry(toolbar, textvariable=self.kernel_size_var, width=8)
-        self.kernel_size_entry.grid(row=2, column=1, sticky="w", pady=(8, 0))
-
-        self.folder_label = ttk.Label(toolbar, text="Ninguna carpeta seleccionada")
-        self.folder_label.grid(row=0, column=4, sticky="w", padx=(10, 0))
-
-        left_panel = ttk.Frame(self.root, padding=(10, 0, 5, 10))
+        left_panel = ttk.Frame(self.root, padding=(10, 0, 5, 8))
         left_panel.grid(row=1, column=0, sticky="nsew")
         left_panel.columnconfigure(0, weight=1)
         left_panel.rowconfigure(1, weight=1)
@@ -130,7 +137,7 @@ class ImageApp:
         scrollbar.grid(row=0, column=1, sticky="ns")
         self.image_listbox.configure(yscrollcommand=scrollbar.set)
 
-        right_panel = ttk.Frame(self.root, padding=(5, 0, 10, 10))
+        right_panel = ttk.Frame(self.root, padding=(5, 0, 10, 8))
         right_panel.grid(row=1, column=1, sticky="nsew")
         right_panel.columnconfigure(0, weight=1)
         right_panel.rowconfigure(0, weight=1)
@@ -153,23 +160,24 @@ class ImageApp:
 
         preview_frame.bind("<Configure>", _update_scrollregion)
         self.right_canvas.bind("<Configure>", _sync_width)
-        self._bind_mousewheel(self.right_canvas)
+        self._bind_mousewheel(self.root, self.right_canvas)
+        self._register_scroll_target(preview_frame)
 
         preview_frame.columnconfigure(0, weight=1)
         preview_frame.columnconfigure(1, weight=1)
         preview_frame.rowconfigure(1, weight=1)
-        preview_frame.rowconfigure(4, weight=1)
+        preview_frame.rowconfigure(3, weight=1)
 
         ttk.Label(preview_frame, text="Histograma original").grid(row=0, column=0, sticky="w", pady=(0, 5))
         ttk.Label(preview_frame, text="Imagen original").grid(row=0, column=1, sticky="w", pady=(0, 5))
 
         self.histogram_container = tk.Frame(preview_frame, bd=1, relief="solid")
-        self.histogram_container.grid(row=1, column=0, sticky="nsew", padx=(0, 10), pady=(0, 10))
+        self.histogram_container.grid(row=1, column=0, sticky="nsew", padx=(0, 8), pady=(0, 6))
         self.histogram_container.columnconfigure(0, weight=1)
         self.histogram_container.rowconfigure(0, weight=1)
 
         self.original_container = tk.Frame(preview_frame, bd=1, relief="solid")
-        self.original_container.grid(row=1, column=1, sticky="nsew", pady=(0, 10))
+        self.original_container.grid(row=1, column=1, sticky="nsew", pady=(0, 6))
         self.original_container.columnconfigure(0, weight=1)
         self.original_container.rowconfigure(0, weight=1)
 
@@ -177,17 +185,17 @@ class ImageApp:
         ttk.Label(preview_frame, text="Imagen procesada").grid(row=2, column=1, sticky="w", pady=(0, 5))
 
         self.processed_histogram_container = tk.Frame(preview_frame, bd=1, relief="solid")
-        self.processed_histogram_container.grid(row=3, column=0, sticky="nsew", padx=(0, 10), pady=(0, 10))
+        self.processed_histogram_container.grid(row=3, column=0, sticky="nsew", padx=(0, 8), pady=(0, 6))
         self.processed_histogram_container.columnconfigure(0, weight=1)
         self.processed_histogram_container.rowconfigure(0, weight=1)
 
         self.processed_container = tk.Frame(preview_frame, bd=1, relief="solid")
-        self.processed_container.grid(row=3, column=1, sticky="nsew", pady=(0, 10))
+        self.processed_container.grid(row=3, column=1, sticky="nsew", pady=(0, 6))
         self.processed_container.columnconfigure(0, weight=1)
         self.processed_container.rowconfigure(0, weight=1)
 
-        metrics_frame = ttk.LabelFrame(right_panel, text="Métricas comparativas", padding=10)
-        metrics_frame.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(0, 10))
+        metrics_frame = ttk.LabelFrame(right_panel, text="Métricas comparativas", padding=(8, 4))
+        metrics_frame.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(0, 6))
         metrics_frame.columnconfigure(1, weight=1)
 
         ttk.Label(metrics_frame, text="Desviación estándar original:").grid(row=0, column=0, sticky="w")
@@ -206,8 +214,47 @@ class ImageApp:
         self.psnr_value_label = ttk.Label(metrics_frame, text="-")
         self.psnr_value_label.grid(row=3, column=1, sticky="w", padx=(10, 0))
 
-        self.evaluation_label = ttk.Label(right_panel, text="Evaluación: -", wraplength=500, justify="left")
-        self.evaluation_label.grid(row=2, column=0, columnspan=2, sticky="w", pady=(0, 10))
+        self.evaluation_label = ttk.Label(right_panel, text="Evaluación: -", wraplength=620, justify="left")
+        self.evaluation_label.grid(row=2, column=0, columnspan=2, sticky="w", pady=(0, 4))
+
+        self.helper_label = ttk.Label(
+            right_panel,
+            text="HE: sin parámetros. CLAHE: usa clipLimit y tileGridSize. Morfología: usa kernel.",
+            wraplength=620,
+            justify="left",
+        )
+        self.helper_label.grid(row=3, column=0, columnspan=2, sticky="w", pady=(0, 4))
+
+        experiment_frame = ttk.LabelFrame(right_panel, text="Experimento Top-Hat", padding=(8, 4))
+        experiment_frame.grid(row=4, column=0, columnspan=2, sticky="ew", pady=(0, 4))
+        experiment_frame.columnconfigure(0, weight=1)
+        self.experiment_button = ttk.Button(
+            experiment_frame,
+            text="Probar kernels 3-5-7-9",
+            command=self.run_top_hat_kernel_experiment,
+        )
+        self.experiment_button.grid(row=0, column=0, sticky="ew")
+
+        tree_frame = ttk.Frame(experiment_frame)
+        tree_frame.grid(row=1, column=0, sticky="nsew", pady=(6, 0))
+        tree_frame.columnconfigure(0, weight=1)
+        tree_frame.rowconfigure(0, weight=1)
+
+        columns = ("kernel", "std", "ambe", "psnr")
+        self.kernel_results_tree = ttk.Treeview(tree_frame, columns=columns, show="headings", height=5)
+        self.kernel_results_tree.heading("kernel", text="Kernel")
+        self.kernel_results_tree.heading("std", text="Std. dev.")
+        self.kernel_results_tree.heading("ambe", text="AMBE")
+        self.kernel_results_tree.heading("psnr", text="PSNR")
+        self.kernel_results_tree.column("kernel", width=70, anchor="center")
+        self.kernel_results_tree.column("std", width=90, anchor="center")
+        self.kernel_results_tree.column("ambe", width=90, anchor="center")
+        self.kernel_results_tree.column("psnr", width=90, anchor="center")
+        self.kernel_results_tree.grid(row=0, column=0, sticky="nsew")
+
+        tree_scrollbar = ttk.Scrollbar(tree_frame, orient="vertical", command=self.kernel_results_tree.yview)
+        tree_scrollbar.grid(row=0, column=1, sticky="ns")
+        self.kernel_results_tree.configure(yscrollcommand=tree_scrollbar.set)
 
         self.status_label = ttk.Label(self.root, text="Listo", anchor="w")
         self.status_label.grid(row=2, column=0, columnspan=2, sticky="ew", padx=10, pady=(0, 10))
@@ -216,6 +263,8 @@ class ImageApp:
         self._show_placeholder(self.processed_container, "La imagen procesada aparecerá aquí")
         self._show_placeholder(self.histogram_container, "Selecciona una imagen para ver su histograma")
         self._show_placeholder(self.processed_histogram_container, "El histograma procesado aparecerá aquí")
+        self._update_parameter_visibility()
+        self._update_experiment_visibility()
 
     def run(self) -> None:
         """Start the Tkinter event loop."""
@@ -316,13 +365,13 @@ class ImageApp:
         figure = Figure(figsize=(4.6, 4.6), dpi=100)
         axes = figure.add_subplot(111)
         axes.imshow(image_rgb)
-        axes.set_title(title)
         axes.axis("off")
-        figure.tight_layout()
+        figure.tight_layout(pad=0.2)
 
         self.original_canvas = FigureCanvasTkAgg(figure, master=self.original_container)
         widget = self.original_canvas.get_tk_widget()
         widget.grid(row=0, column=0, sticky="nsew")
+        widget.bind("<Enter>", lambda event: setattr(self, "active_scroll_canvas", self.right_canvas), add="+")
         self.original_canvas.draw()
 
     def _show_processed_image(self, image_gray: np.ndarray, title: str) -> None:
@@ -334,13 +383,13 @@ class ImageApp:
         figure = Figure(figsize=(4.6, 4.6), dpi=100)
         axes = figure.add_subplot(111)
         axes.imshow(image_gray, cmap="gray")
-        axes.set_title(title)
         axes.axis("off")
-        figure.tight_layout()
+        figure.tight_layout(pad=0.2)
 
         self.processed_canvas = FigureCanvasTkAgg(figure, master=self.processed_container)
         widget = self.processed_canvas.get_tk_widget()
         widget.grid(row=0, column=0, sticky="nsew")
+        widget.bind("<Enter>", lambda event: setattr(self, "active_scroll_canvas", self.right_canvas), add="+")
         self.processed_canvas.draw()
 
     def _show_histogram(self, image_bgr: np.ndarray, title: str, container: tk.Widget) -> None:
@@ -351,19 +400,20 @@ class ImageApp:
 
         histogram = calculate_grayscale_histogram(image_bgr)
 
-        figure = Figure(figsize=(4.6, 2.6), dpi=100)
+        figure = Figure(figsize=(4.6, 2.2), dpi=100)
         axes = figure.add_subplot(111)
         axes.plot(histogram, color="black", linewidth=1)
         axes.set_xlim([0, 255])
-        axes.set_title(f"Histograma en escala de grises: {title}")
+        axes.set_title("Histograma", fontsize=10)
         axes.set_xlabel("Intensidad")
         axes.set_ylabel("Frecuencia")
         axes.grid(alpha=0.2)
-        figure.tight_layout()
+        figure.tight_layout(pad=0.6)
 
         canvas = FigureCanvasTkAgg(figure, master=container)
         widget = canvas.get_tk_widget()
         widget.grid(row=0, column=0, sticky="nsew")
+        widget.bind("<Enter>", lambda event: setattr(self, "active_scroll_canvas", self.right_canvas), add="+")
         canvas.draw()
 
         if container is self.histogram_container:
@@ -371,13 +421,42 @@ class ImageApp:
         elif container is self.processed_histogram_container:
             self.processed_histogram_canvas = canvas
 
-    def _bind_mousewheel(self, canvas: tk.Canvas) -> None:
-        """Enable mouse wheel scrolling on the right panel."""
+    def _bind_mousewheel(self, root: tk.Widget, canvas: tk.Canvas) -> None:
+        """Enable mouse wheel scrolling anywhere over the app."""
+        self.active_scroll_canvas = canvas
+
         def _on_mousewheel(event: tk.Event) -> str:
-            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+            target_canvas = self.active_scroll_canvas or canvas
+            if event.delta:
+                target_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
             return "break"
 
-        canvas.bind_all("<MouseWheel>", _on_mousewheel)
+        def _on_linux_scroll_up(event: tk.Event) -> str:
+            target_canvas = self.active_scroll_canvas or canvas
+            target_canvas.yview_scroll(-1, "units")
+            return "break"
+
+        def _on_linux_scroll_down(event: tk.Event) -> str:
+            target_canvas = self.active_scroll_canvas or canvas
+            target_canvas.yview_scroll(1, "units")
+            return "break"
+
+        root.bind_all("<MouseWheel>", _on_mousewheel)
+        root.bind_all("<Button-4>", _on_linux_scroll_up)
+        root.bind_all("<Button-5>", _on_linux_scroll_down)
+
+    def _register_scroll_target(self, widget: tk.Widget) -> None:
+        """Mark a widget subtree as part of the scrollable panel."""
+        def _set_target(event: tk.Event) -> None:
+            self.active_scroll_canvas = self.right_canvas
+
+        def _clear_target(event: tk.Event) -> None:
+            self.active_scroll_canvas = self.right_canvas
+
+        widget.bind("<Enter>", _set_target, add="+")
+        widget.bind("<Leave>", _clear_target, add="+")
+        for child in widget.winfo_children():
+            self._register_scroll_target(child)
 
     def _process_selected_algorithm(self, image_bgr: np.ndarray) -> np.ndarray:
         """Apply the selected enhancement algorithm."""
@@ -425,10 +504,37 @@ class ImageApp:
 
     def _on_algorithm_change(self, event: tk.Event | None = None) -> None:
         """Mark the preview as needing reprocessing."""
+        self._update_parameter_visibility()
+        self._update_experiment_visibility()
         if self.selected_image is not None and self.selected_image_name is not None:
             self.status_label.configure(
                 text=f"Algoritmo cambiado a {self.algorithm_var.get()}. Pulsa Procesar para actualizar."
             )
+
+    def _update_parameter_visibility(self) -> None:
+        """Enable only the parameter controls relevant to the selected algorithm."""
+        algorithm_name = self.algorithm_var.get()
+        is_clahe = algorithm_name == "CLAHE"
+        is_morphology = algorithm_name in {"White Top-Hat", "Black Top-Hat", "Enhanced Top-Hat"}
+
+        for widget in (self.clip_limit_entry, self.tile_grid_x_entry, self.tile_grid_y_entry):
+            widget.configure(state="normal" if is_clahe else "disabled")
+
+        self.kernel_size_entry.configure(state="normal" if is_morphology else "disabled")
+
+        if is_clahe:
+            self.helper_label.configure(text="CLAHE activo: ajusta clipLimit y tileGridSize, luego pulsa Procesar.")
+        elif is_morphology:
+            self.helper_label.configure(text="Top-Hat activo: ajusta kernel y pulsa Procesar.")
+        else:
+            self.helper_label.configure(text="HE activo: no requiere parámetros adicionales. Pulsa Procesar.")
+
+    def _update_experiment_visibility(self) -> None:
+        """Show the kernel experiment only for Top-Hat algorithms."""
+        is_morphology = self.algorithm_var.get() in {"White Top-Hat", "Black Top-Hat", "Enhanced Top-Hat"}
+        state = "normal" if is_morphology else "disabled"
+        if self.experiment_button is not None:
+            self.experiment_button.configure(state=state)
 
     def process_current_image(self) -> None:
         """Process the currently selected image using the chosen algorithm."""
@@ -451,6 +557,89 @@ class ImageApp:
         self.status_label.configure(
             text=f"Procesado con {algorithm_name}: {self.selected_image_name}"
         )
+
+    def run_top_hat_kernel_experiment(self) -> None:
+        """Run the selected Top-Hat algorithm across multiple kernel sizes."""
+        if self.selected_image is None or self.selected_image_name is None:
+            messagebox.showinfo("Experimento", "Primero selecciona una imagen.")
+            return
+
+        algorithm_name = self.algorithm_var.get()
+        if algorithm_name not in {"White Top-Hat", "Black Top-Hat", "Enhanced Top-Hat"}:
+            messagebox.showinfo("Experimento", "Selecciona un algoritmo Top-Hat para ejecutar esta prueba.")
+            return
+
+        kernel_sizes = [3, 5, 7, 9]
+        original_image = self.selected_image
+        original_metrics = calculate_basic_metrics(original_image)
+
+        if self.kernel_results_tree is not None:
+            for item in self.kernel_results_tree.get_children():
+                self.kernel_results_tree.delete(item)
+
+        results_rows: list[dict[str, object]] = []
+        for kernel_size in kernel_sizes:
+            processed_image = apply_morphological_algorithm(
+                original_image,
+                algorithm_name,
+                kernel_size=kernel_size,
+            )
+            processed_metrics = calculate_basic_metrics(processed_image)
+            ambe_value = calculate_ambe(original_image, processed_image)
+            psnr_value = calculate_psnr(original_image, processed_image)
+            results_rows.append(
+                {
+                    "image_name": self.selected_image_name,
+                    "algorithm": algorithm_name,
+                    "kernel_size": kernel_size,
+                    "original_std": round(original_metrics["desviacion_estandar"], 4),
+                    "processed_std": round(processed_metrics["desviacion_estandar"], 4),
+                    "ambe": round(ambe_value, 4),
+                    "psnr": "Inf" if np.isinf(psnr_value) else round(psnr_value, 4),
+                }
+            )
+
+            if self.kernel_results_tree is not None:
+                self.kernel_results_tree.insert(
+                    "",
+                    "end",
+                    values=(
+                        f"{kernel_size}x{kernel_size}",
+                        f"{processed_metrics['desviacion_estandar']:.2f}",
+                        f"{ambe_value:.2f}",
+                        "Inf" if np.isinf(psnr_value) else f"{psnr_value:.2f}",
+                    ),
+                )
+
+        self._save_kernel_experiment_csv(results_rows)
+        self.status_label.configure(
+            text=f"Experimento guardado en results/ para {self.selected_image_name}"
+        )
+
+    def _save_kernel_experiment_csv(self, rows: list[dict[str, object]]) -> None:
+        """Persist kernel experiment results to CSV in the results folder."""
+        results_dir = Path(__file__).resolve().parent.parent / "results"
+        results_dir.mkdir(parents=True, exist_ok=True)
+
+        image_label = self.selected_image_name or "image"
+        safe_name = image_label.replace("/", "_").replace("\\", "_").replace(" ", "_")
+        csv_path = results_dir / f"{Path(safe_name).stem}_top_hat_kernels.csv"
+
+        with csv_path.open("w", newline="", encoding="utf-8") as csv_file:
+            writer = csv.DictWriter(
+                csv_file,
+                fieldnames=[
+                    "image_name",
+                    "algorithm",
+                    "kernel_size",
+                    "original_std",
+                    "processed_std",
+                    "ambe",
+                    "psnr",
+                ],
+            )
+            writer.writeheader()
+            writer.writerows(rows)
 
     def _set_comparative_metrics(self, original_image: np.ndarray | None, processed_image: np.ndarray | None = None) -> None:
         """Update comparative metric labels and evaluation text."""
