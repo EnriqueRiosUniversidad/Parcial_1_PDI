@@ -11,7 +11,7 @@ import numpy as np
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 
-from core.algorithms import apply_histogram_equalization
+from core.algorithms import apply_clahe, apply_histogram_equalization, apply_morphological_algorithm
 from core.image_loader import list_image_files, load_image
 from core.histograms import calculate_grayscale_histogram
 from core.metrics import (
@@ -34,12 +34,19 @@ class ImageApp:
 
         self.current_folder: Path | None = None
         self.image_paths: list[Path] = []
+        self.selected_image: np.ndarray | None = None
+        self.selected_image_name: str | None = None
         self.original_canvas: FigureCanvasTkAgg | None = None
         self.processed_canvas: FigureCanvasTkAgg | None = None
         self.histogram_canvas: FigureCanvasTkAgg | None = None
         self.processed_histogram_canvas: FigureCanvasTkAgg | None = None
         self.right_canvas: tk.Canvas | None = None
         self.right_scrollbar: ttk.Scrollbar | None = None
+        self.clip_limit_var = tk.StringVar(value="2.0")
+        self.tile_grid_x_var = tk.StringVar(value="8")
+        self.tile_grid_y_var = tk.StringVar(value="8")
+        self.kernel_size_var = tk.StringVar(value="15")
+        self.process_button: ttk.Button | None = None
 
         self._build_ui()
 
@@ -61,17 +68,45 @@ class ImageApp:
 
         ttk.Label(toolbar, text="Algoritmo:").grid(row=0, column=1, sticky="e", padx=(20, 5))
         self.algorithm_var = tk.StringVar(value="HE")
+        self.algorithm_options = [
+            "HE",
+            "CLAHE",
+            "White Top-Hat",
+            "Black Top-Hat",
+            "Enhanced Top-Hat",
+        ]
         self.algorithm_combo = ttk.Combobox(
             toolbar,
             textvariable=self.algorithm_var,
-            values=["HE"],
+            values=self.algorithm_options,
             state="readonly",
-            width=10,
+            width=18,
         )
         self.algorithm_combo.grid(row=0, column=2, sticky="w")
+        self.algorithm_combo.bind("<<ComboboxSelected>>", self._on_algorithm_change)
+
+        self.process_button = ttk.Button(toolbar, text="Procesar", command=self.process_current_image)
+        self.process_button.grid(row=0, column=3, sticky="w", padx=(20, 0))
+
+        ttk.Label(toolbar, text="clipLimit:").grid(row=1, column=0, sticky="e", pady=(8, 0))
+        self.clip_limit_entry = ttk.Entry(toolbar, textvariable=self.clip_limit_var, width=8)
+        self.clip_limit_entry.grid(row=1, column=1, sticky="w", pady=(8, 0))
+
+        ttk.Label(toolbar, text="tileGridSize:").grid(row=1, column=2, sticky="e", padx=(20, 5), pady=(8, 0))
+        tile_frame = ttk.Frame(toolbar)
+        tile_frame.grid(row=1, column=3, sticky="w", pady=(8, 0))
+        self.tile_grid_x_entry = ttk.Entry(tile_frame, textvariable=self.tile_grid_x_var, width=4)
+        self.tile_grid_x_entry.grid(row=0, column=0)
+        ttk.Label(tile_frame, text="x").grid(row=0, column=1, padx=4)
+        self.tile_grid_y_entry = ttk.Entry(tile_frame, textvariable=self.tile_grid_y_var, width=4)
+        self.tile_grid_y_entry.grid(row=0, column=2)
+
+        ttk.Label(toolbar, text="kernel:").grid(row=2, column=0, sticky="e", pady=(8, 0))
+        self.kernel_size_entry = ttk.Entry(toolbar, textvariable=self.kernel_size_var, width=8)
+        self.kernel_size_entry.grid(row=2, column=1, sticky="w", pady=(8, 0))
 
         self.folder_label = ttk.Label(toolbar, text="Ninguna carpeta seleccionada")
-        self.folder_label.grid(row=0, column=3, sticky="w", padx=(10, 0))
+        self.folder_label.grid(row=0, column=4, sticky="w", padx=(10, 0))
 
         left_panel = ttk.Frame(self.root, padding=(10, 0, 5, 10))
         left_panel.grid(row=1, column=0, sticky="nsew")
@@ -237,13 +272,14 @@ class ImageApp:
             self._set_comparative_metrics(None)
             return
 
-        processed_image = self._process_selected_algorithm(image)
+        self.selected_image = image
+        self.selected_image_name = image_path.name
         self._show_image(image, image_path.name)
-        self._show_processed_image(processed_image, image_path.name)
+        self._show_placeholder(self.processed_container, "Pulsa Procesar para ver el resultado")
+        self._show_placeholder(self.processed_histogram_container, "Pulsa Procesar para ver el histograma")
         self._show_histogram(image, image_path.name, self.histogram_container)
-        self._show_histogram(processed_image, f"HE: {image_path.name}", self.processed_histogram_container)
-        self._set_comparative_metrics(image, processed_image)
-        self.status_label.configure(text=str(image_path))
+        self._set_comparative_metrics(None)
+        self.status_label.configure(text=f"Imagen cargada: {image_path.name}")
 
     def _clear_preview(self, container: tk.Widget) -> None:
         """Remove the current preview widget if it exists."""
@@ -348,7 +384,73 @@ class ImageApp:
         algorithm_name = self.algorithm_var.get()
         if algorithm_name == "HE":
             return apply_histogram_equalization(image_bgr)
+        if algorithm_name == "CLAHE":
+            return apply_clahe(
+                image_bgr,
+                clip_limit=self._read_clip_limit(),
+                tile_grid_size=self._read_tile_grid_size(),
+            )
+        if algorithm_name in {"White Top-Hat", "Black Top-Hat", "Enhanced Top-Hat"}:
+            return apply_morphological_algorithm(
+                image_bgr,
+                algorithm_name,
+                kernel_size=self._read_kernel_size(),
+            )
         return apply_histogram_equalization(image_bgr)
+
+    def _read_clip_limit(self) -> float:
+        """Read the clip limit parameter with a safe default."""
+        try:
+            value = float(self.clip_limit_var.get())
+            return value if value > 0 else 2.0
+        except ValueError:
+            return 2.0
+
+    def _read_tile_grid_size(self) -> tuple[int, int]:
+        """Read CLAHE tile grid size with safe defaults."""
+        try:
+            x_value = max(1, int(self.tile_grid_x_var.get()))
+            y_value = max(1, int(self.tile_grid_y_var.get()))
+            return (x_value, y_value)
+        except ValueError:
+            return (8, 8)
+
+    def _read_kernel_size(self) -> int:
+        """Read morphological kernel size with a safe default."""
+        try:
+            value = int(self.kernel_size_var.get())
+            return value if value > 0 else 15
+        except ValueError:
+            return 15
+
+    def _on_algorithm_change(self, event: tk.Event | None = None) -> None:
+        """Mark the preview as needing reprocessing."""
+        if self.selected_image is not None and self.selected_image_name is not None:
+            self.status_label.configure(
+                text=f"Algoritmo cambiado a {self.algorithm_var.get()}. Pulsa Procesar para actualizar."
+            )
+
+    def process_current_image(self) -> None:
+        """Process the currently selected image using the chosen algorithm."""
+        if self.selected_image is None or self.selected_image_name is None:
+            messagebox.showinfo("Procesar", "Primero selecciona una imagen.")
+            return
+
+        processed_image = self._process_selected_algorithm(self.selected_image)
+        algorithm_name = self.algorithm_var.get()
+
+        self._show_image(self.selected_image, self.selected_image_name)
+        self._show_processed_image(processed_image, f"{algorithm_name}: {self.selected_image_name}")
+        self._show_histogram(self.selected_image, self.selected_image_name, self.histogram_container)
+        self._show_histogram(
+            processed_image,
+            f"{algorithm_name}: {self.selected_image_name}",
+            self.processed_histogram_container,
+        )
+        self._set_comparative_metrics(self.selected_image, processed_image)
+        self.status_label.configure(
+            text=f"Procesado con {algorithm_name}: {self.selected_image_name}"
+        )
 
     def _set_comparative_metrics(self, original_image: np.ndarray | None, processed_image: np.ndarray | None = None) -> None:
         """Update comparative metric labels and evaluation text."""
