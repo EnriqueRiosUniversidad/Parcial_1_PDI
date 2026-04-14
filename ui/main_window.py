@@ -13,6 +13,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 
 from core.algorithms import apply_clahe, apply_histogram_equalization, apply_morphological_algorithm
+from core.batch import BatchConfig, run_folder_batch
 from core.image_loader import list_image_files, load_image
 from core.histograms import calculate_grayscale_histogram
 from core.metrics import (
@@ -49,6 +50,7 @@ class ImageApp:
         self.tile_grid_y_var = tk.StringVar(value="8")
         self.kernel_size_var = tk.StringVar(value="15")
         self.process_button: ttk.Button | None = None
+        self.batch_button: ttk.Button | None = None
         self.experiment_button: ttk.Button | None = None
         self.kernel_results_tree: ttk.Treeview | None = None
 
@@ -96,6 +98,8 @@ class ImageApp:
         self.algorithm_combo.bind("<<ComboboxSelected>>", self._on_algorithm_change)
         self.process_button = ttk.Button(algorithm_frame, text="Procesar", command=self.process_current_image)
         self.process_button.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(6, 0))
+        self.batch_button = ttk.Button(algorithm_frame, text="Batch carpeta", command=self.run_batch_processing)
+        self.batch_button.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(6, 0))
 
         params_frame = ttk.LabelFrame(toolbar, text="Parámetros", padding=(8, 4))
         params_frame.grid(row=0, column=2, sticky="ew", padx=(8, 0))
@@ -557,6 +561,32 @@ class ImageApp:
         self.status_label.configure(
             text=f"Procesado con {algorithm_name}: {self.selected_image_name}"
         )
+
+    def run_batch_processing(self) -> None:
+        """Process all JPG images in the selected folder with all algorithms."""
+        if self.current_folder is None:
+            messagebox.showinfo("Batch", "Primero selecciona una carpeta.")
+            return
+
+        try:
+            result_paths = run_folder_batch(
+                self.current_folder,
+                Path(__file__).resolve().parent.parent / "results",
+                BatchConfig(),
+            )
+        except Exception as exc:  # pragma: no cover - user-facing error path
+            messagebox.showerror("Batch", f"No se pudo ejecutar el procesamiento batch:\n{exc}")
+            return
+
+        messagebox.showinfo(
+            "Batch completado",
+            "Procesamiento batch finalizado.\n"
+            f"Carpeta: {result_paths['batch_dir']}\n"
+            f"Resumen: {result_paths['per_image_csv']}\n"
+            f"Comparativo: {result_paths['global_csv']}\n"
+            f"Ranking: {result_paths['ranking_csv']}",
+        )
+        self.status_label.configure(text=f"Batch completado para {self.current_folder.name}")
 
     def run_top_hat_kernel_experiment(self) -> None:
         """Run the selected Top-Hat algorithm across multiple kernel sizes."""

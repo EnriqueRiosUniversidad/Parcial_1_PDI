@@ -1,0 +1,5 @@
+image_name,algorithm,kernel_size,original_std,processed_std,ambe,psnr
+Malignant case (1).jpg,Enhanced Top-Hat,3,72.0104,72.8633,0.4799,33.8211
+Malignant case (1).jpg,Enhanced Top-Hat,5,72.0104,73.976,1.0057,28.5314
+Malignant case (1).jpg,Enhanced Top-Hat,7,72.0104,74.3882,0.8992,27.1467
+Malignant case (1).jpg,Enhanced Top-Hat,9,72.0104,74.571,0.4816,26.2858
