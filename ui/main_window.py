@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import csv
+import re
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
@@ -69,6 +70,8 @@ class ImageApp:
         self.experiment_frame: ttk.LabelFrame | None = None
         self.metrics_frame: ttk.LabelFrame | None = None
         self.single_image_ranking_csv: Path | None = None
+        self.image_artifacts_root: Path | None = None
+        self.image_ranking_csv: Path | None = None
 
         self._setup_visual_style()
         self._build_ui()
@@ -215,6 +218,13 @@ class ImageApp:
         )
         self.image_listbox.grid(row=0, column=0, sticky="nsew")
         self.image_listbox.bind("<<ListboxSelect>>", self.on_image_selected)
+        self.image_listbox.bind("<ButtonRelease-1>", self._keep_listbox_focus, add="+")
+        self.image_listbox.bind("<Up>", self._move_image_selection)
+        self.image_listbox.bind("<Down>", self._move_image_selection)
+        self.image_listbox.bind("<Prior>", self._move_image_selection)
+        self.image_listbox.bind("<Next>", self._move_image_selection)
+        self.image_listbox.bind("<Home>", self._move_image_selection)
+        self.image_listbox.bind("<End>", self._move_image_selection)
 
         scrollbar = ttk.Scrollbar(list_frame, orient="vertical", command=self.image_listbox.yview)
         scrollbar.grid(row=0, column=1, sticky="ns")
@@ -431,6 +441,8 @@ class ImageApp:
         self.current_folder = folder_path
         self.folder_label.configure(text=str(folder_path))
         self.single_image_ranking_csv = Path(__file__).resolve().parent.parent / "results" / f"{folder_path.name}_ranking_imagen.csv"
+        self.image_artifacts_root = Path(__file__).resolve().parent.parent / "results" / f"{folder_path.name}_artifacts"
+        self.image_ranking_csv = None
 
         self.image_paths = list_image_files(folder_path)
         self._refresh_image_list()
@@ -476,6 +488,7 @@ class ImageApp:
         self._show_histogram(image, image_path.name, self.histogram_container)
         self._set_comparative_metrics(None)
         self.status_label.configure(text=f"Imagen cargada: {image_path.name}")
+        self.image_listbox.focus_set()
         if self.experiment_frame is not None:
             self.experiment_frame.grid_remove()
         if self.image_comparison_frame is not None:
@@ -483,6 +496,43 @@ class ImageApp:
         if self.image_comparison_tree is not None:
             for item in self.image_comparison_tree.get_children():
                 self.image_comparison_tree.delete(item)
+
+    def _move_image_selection(self, event: tk.Event) -> str:
+        """Move selection in the image list with the keyboard arrows."""
+        if not self.image_paths:
+            return "break"
+
+        current = self.image_listbox.curselection()
+        if current:
+            index = current[0]
+        else:
+            index = 0
+
+        key = event.keysym
+        if key == "Up":
+            index = max(0, index - 1)
+        elif key == "Down":
+            index = min(len(self.image_paths) - 1, index + 1)
+        elif key == "Prior":
+            index = max(0, index - 10)
+        elif key == "Next":
+            index = min(len(self.image_paths) - 1, index + 10)
+        elif key == "Home":
+            index = 0
+        elif key == "End":
+            index = len(self.image_paths) - 1
+
+        self.image_listbox.selection_clear(0, tk.END)
+        self.image_listbox.selection_set(index)
+        self.image_listbox.activate(index)
+        self.image_listbox.see(index)
+        self.image_listbox.focus_set()
+        self.on_image_selected()
+        return "break"
+
+    def _keep_listbox_focus(self, event: tk.Event) -> None:
+        """Keep keyboard focus on the image list after mouse clicks."""
+        self.image_listbox.focus_set()
 
     def _clear_preview(self, container: tk.Widget) -> None:
         """Remove the current preview widget if it exists."""
@@ -839,8 +889,13 @@ class ImageApp:
             messagebox.showinfo("Ranking", "Primero selecciona una imagen.")
             return
 
-        rows = build_image_comparison(self.selected_image, self._current_batch_config())
+        config = self._current_batch_config()
+        rows = build_image_comparison(self.selected_image, config)
         append_image_ranking_csv(self.single_image_ranking_csv, self.selected_image_name, rows)
+        summary_rows = self._build_best_case_summary_rows(rows)
+        self._append_summary_to_ranking_csv(summary_rows)
+        self._write_image_specific_csv(rows, summary_rows)
+        self._export_best_case_artifacts(rows, config)
         if self.image_comparison_frame is not None:
             self.image_comparison_frame.grid()
         self.refresh_image_comparison_view()
@@ -965,3 +1020,186 @@ class ImageApp:
             clahe_tile_grid_size=self._read_tile_grid_size(),
             top_hat_kernel_size=self._read_kernel_size(),
         )
+
+    def _build_best_case_summary_rows(self, ranking_rows: list[dict[str, object]]) -> list[dict[str, object]]:
+        """Derive best algorithm rows for the ranking summary block."""
+        if not ranking_rows:
+            return []
+
+        def _numeric(value: object) -> float:
+            if value == "Inf":
+                return float("inf")
+            return float(value)
+
+        best_contrast = max(ranking_rows, key=lambda row: float(row["processed_std"]))
+        best_brightness = min(ranking_rows, key=lambda row: float(row["ambe"]))
+        best_distortion = max(ranking_rows, key=lambda row: _numeric(row["psnr"]))
+        best_overall = max(ranking_rows, key=lambda row: float(row["ranking_score"]))
+
+        summary_map = [
+            ("MEJOR_CONTRASTE", best_contrast),
+            ("MEJOR_BRILLO", best_brightness),
+            ("MENOR_DISTORSION", best_distortion),
+            ("MEJOR_GENERAL", best_overall),
+        ]
+        summary_rows: list[dict[str, object]] = []
+        for label, row in summary_map:
+            summary_rows.append(
+                {
+                    "section": label,
+                    "rank": row["rank"],
+                    "algorithm": row["algorithm"],
+                    "original_std": row["original_std"],
+                    "processed_std": row["processed_std"],
+                    "std_delta": row["std_delta"],
+                    "ambe": row["ambe"],
+                    "psnr": row["psnr"],
+                    "contrast_effect": row["contrast_effect"],
+                    "ranking_score": row["ranking_score"],
+                }
+            )
+        return summary_rows
+
+    def _append_summary_to_ranking_csv(self, summary_rows: list[dict[str, object]]) -> None:
+        """Append the summary winners to the same ranking CSV."""
+        if self.single_image_ranking_csv is None or self.selected_image_name is None:
+            return
+        with self.single_image_ranking_csv.open("a", newline="", encoding="utf-8") as csv_file:
+            writer = csv.writer(csv_file)
+            writer.writerow([])
+            writer.writerow(["summary_image", self.selected_image_name])
+            writer.writerow(["section", "rank", "algorithm", "original_std", "processed_std", "std_delta", "ambe", "psnr", "contrast_effect", "ranking_score"])
+            for row in summary_rows:
+                writer.writerow(
+                    [
+                        row["section"],
+                        row["rank"],
+                        row["algorithm"],
+                        row["original_std"],
+                        row["processed_std"],
+                        row["std_delta"],
+                        row["ambe"],
+                        row["psnr"],
+                        row["contrast_effect"],
+                        row["ranking_score"],
+                    ]
+                )
+
+    def _write_image_specific_csv(self, ranking_rows: list[dict[str, object]], summary_rows: list[dict[str, object]]) -> None:
+        """Write a CSV dedicated to the selected image inside its artifact folder."""
+        if self.image_artifacts_root is None or self.selected_image_name is None:
+            return
+
+        image_stem = Path(self.selected_image_name).stem
+        output_dir = self.image_artifacts_root / image_stem
+        output_dir.mkdir(parents=True, exist_ok=True)
+        csv_path = output_dir / f"{image_stem}_ranking.csv"
+
+        with csv_path.open("w", newline="", encoding="utf-8") as csv_file:
+            writer = csv.writer(csv_file)
+            writer.writerow(["image_name", self.selected_image_name])
+            writer.writerow(["rank", "algorithm", "original_std", "processed_std", "std_delta", "ambe", "psnr", "contrast_effect", "ranking_score"])
+            for row in ranking_rows:
+                writer.writerow(
+                    [
+                        row["rank"],
+                        row["algorithm"],
+                        row["original_std"],
+                        row["processed_std"],
+                        row["std_delta"],
+                        row["ambe"],
+                        row["psnr"],
+                        row["contrast_effect"],
+                        row["ranking_score"],
+                    ]
+                )
+
+            writer.writerow([])
+            writer.writerow(["summary_image", self.selected_image_name])
+            writer.writerow(["section", "rank", "algorithm", "original_std", "processed_std", "std_delta", "ambe", "psnr", "contrast_effect", "ranking_score"])
+            for row in summary_rows:
+                writer.writerow(
+                    [
+                        row["section"],
+                        row["rank"],
+                        row["algorithm"],
+                        row["original_std"],
+                        row["processed_std"],
+                        row["std_delta"],
+                        row["ambe"],
+                        row["psnr"],
+                        row["contrast_effect"],
+                        row["ranking_score"],
+                    ]
+                )
+
+    def _export_best_case_artifacts(self, ranking_rows: list[dict[str, object]], config: BatchConfig) -> None:
+        """Export images and histograms for the best cases by metric."""
+        if self.selected_image is None or self.selected_image_name is None or self.image_artifacts_root is None:
+            return
+
+        best_cases = {
+            "mejor_contraste": max(ranking_rows, key=lambda row: float(row["processed_std"])),
+            "mejor_brillo": min(ranking_rows, key=lambda row: float(row["ambe"])),
+            "menor_distorsion": max(ranking_rows, key=lambda row: float("inf") if row["psnr"] == "Inf" else float(row["psnr"])),
+            "mejor_general": max(ranking_rows, key=lambda row: float(row["ranking_score"])),
+        }
+
+        for folder_name, row in best_cases.items():
+            algorithm_name = str(row["algorithm"])
+            processed_image = self._process_algorithm_with_config(self.selected_image, algorithm_name, config)
+            output_dir = self.image_artifacts_root / Path(self.selected_image_name).stem / folder_name
+            self._save_artifact_bundle(self.selected_image, processed_image, output_dir)
+
+    def _process_algorithm_with_config(self, image_bgr: np.ndarray, algorithm_name: str, config: BatchConfig) -> np.ndarray:
+        """Process an image using an explicit algorithm label and config."""
+        if algorithm_name == "HE":
+            return apply_histogram_equalization(image_bgr)
+        if algorithm_name.startswith("CLAHE"):
+            clip_limit = config.clahe_clip_limit
+            if "1.5" in algorithm_name:
+                clip_limit = 1.5
+            elif "3.0" in algorithm_name:
+                clip_limit = 3.0
+            return apply_clahe(image_bgr, clip_limit=clip_limit, tile_grid_size=config.clahe_tile_grid_size)
+        if algorithm_name.startswith("White Top-Hat"):
+            kernel = self._extract_kernel_size_from_label(algorithm_name, config.top_hat_kernel_size)
+            return apply_morphological_algorithm(image_bgr, "White Top-Hat", kernel_size=kernel)
+        if algorithm_name.startswith("Black Top-Hat"):
+            kernel = self._extract_kernel_size_from_label(algorithm_name, config.top_hat_kernel_size)
+            return apply_morphological_algorithm(image_bgr, "Black Top-Hat", kernel_size=kernel)
+        if algorithm_name.startswith("Enhanced Top-Hat"):
+            kernel = self._extract_kernel_size_from_label(algorithm_name, config.top_hat_kernel_size)
+            return apply_morphological_algorithm(image_bgr, "Enhanced Top-Hat", kernel_size=kernel)
+        return apply_histogram_equalization(image_bgr)
+
+    def _extract_kernel_size_from_label(self, algorithm_name: str, default_kernel: int) -> int:
+        """Extract a kernel size from the ranking label if present."""
+        match = re.search(r"(\d+)x\1", algorithm_name)
+        if match:
+            return int(match.group(1))
+        return default_kernel
+
+    def _save_artifact_bundle(self, original_image: np.ndarray, processed_image: np.ndarray, output_dir: Path) -> None:
+        """Save image pairs and their histograms to a folder."""
+        output_dir.mkdir(parents=True, exist_ok=True)
+        cv2.imwrite(str(output_dir / "original.png"), original_image)
+        cv2.imwrite(str(output_dir / "processed.png"), processed_image)
+        self._save_histogram_artifact(original_image, output_dir / "original_histogram.png")
+        self._save_histogram_artifact(processed_image, output_dir / "processed_histogram.png")
+
+    def _save_histogram_artifact(self, image_bgr: np.ndarray, output_path: Path) -> None:
+        """Save a grayscale histogram as an image file."""
+        histogram = calculate_grayscale_histogram(image_bgr)
+        figure = Figure(figsize=(4.6, 2.2), dpi=100)
+        axes = figure.add_subplot(111)
+        axes.plot(histogram, color="black", linewidth=1)
+        axes.set_xlim([0, 255])
+        axes.set_title("Histograma", fontsize=10)
+        axes.set_xlabel("Intensidad")
+        axes.set_ylabel("Frecuencia")
+        axes.grid(alpha=0.2)
+        figure.tight_layout(pad=0.6)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        figure.savefig(str(output_path), dpi=100, bbox_inches="tight")
+        figure.clf()
