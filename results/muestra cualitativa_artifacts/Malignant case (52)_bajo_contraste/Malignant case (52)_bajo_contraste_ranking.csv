@@ -1,0 +1,33 @@
+category,image_name,rank,algorithm,original_std,processed_std,std_delta,ambe,psnr,contrast_effect,ranking_score
+ranking,Malignant case (52)_bajo_contraste.jpg,1,Enhanced Top-Hat 15x15,63.9926,68.4575,4.4649,0.408,24.7621,increase,35.2628
+ranking,Malignant case (52)_bajo_contraste.jpg,2,Enhanced Top-Hat 9x9,63.9926,66.9681,2.9756,0.9868,26.6146,increase,34.3214
+ranking,Malignant case (52)_bajo_contraste.jpg,3,Enhanced Top-Hat 7x7,63.9926,66.5739,2.5813,1.1206,27.5296,increase,34.1031
+ranking,Malignant case (52)_bajo_contraste.jpg,4,Enhanced Top-Hat 3x3,63.9926,64.3413,0.3488,0.1448,38.9031,increase,34.0434
+ranking,Malignant case (52)_bajo_contraste.jpg,5,Enhanced Top-Hat 5x5,63.9926,65.6229,1.6303,0.72,30.7639,increase,33.9896
+ranking,Malignant case (52)_bajo_contraste.jpg,6,CLAHE clip 1.5,63.9926,62.2487,-1.7438,0.6581,30.088,decrease,32.2997
+ranking,Malignant case (52)_bajo_contraste.jpg,7,CLAHE clip 2,63.9926,61.68,-2.3126,1.7283,28.1622,decrease,31.3839
+ranking,Malignant case (52)_bajo_contraste.jpg,8,CLAHE clip 3.0,63.9926,60.5389,-3.4537,3.8968,25.2715,decrease,29.5847
+ranking,Malignant case (52)_bajo_contraste.jpg,9,HE,63.9926,67.6657,3.6732,55.4103,11.1714,increase,6.6863
+ranking,Malignant case (52)_bajo_contraste.jpg,10,White Top-Hat 15x15,63.9926,26.1442,-37.8484,70.2304,9.0588,decrease,-21.5902
+ranking,Malignant case (52)_bajo_contraste.jpg,11,White Top-Hat 9x9,63.9926,23.7959,-40.1967,72.5007,8.7442,decrease,-23.9152
+ranking,Malignant case (52)_bajo_contraste.jpg,12,White Top-Hat 7x7,63.9926,22.7064,-41.2862,73.426,8.638,decrease,-24.9279
+ranking,Malignant case (52)_bajo_contraste.jpg,13,White Top-Hat 5x5,63.9926,15.5732,-48.4193,75.7349,8.415,decrease,-29.6601
+ranking,Malignant case (52)_bajo_contraste.jpg,14,Black Top-Hat 15x15,63.9926,10.2693,-53.7233,74.1805,8.3154,decrease,-31.5399
+ranking,Malignant case (52)_bajo_contraste.jpg,15,Black Top-Hat 9x9,63.9926,6.0145,-57.9781,76.3266,8.1802,decrease,-34.747
+ranking,Malignant case (52)_bajo_contraste.jpg,16,Black Top-Hat 7x7,63.9926,4.668,-59.3245,77.1217,8.1249,decrease,-35.8206
+ranking,Malignant case (52)_bajo_contraste.jpg,17,White Top-Hat 3x3,63.9926,4.1754,-59.8172,78.5631,8.0758,decrease,-36.7901
+ranking,Malignant case (52)_bajo_contraste.jpg,18,Black Top-Hat 5x5,63.9926,3.2224,-60.7701,78.0289,8.0598,decrease,-37.0002
+ranking,Malignant case (52)_bajo_contraste.jpg,19,Black Top-Hat 3x3,63.9926,1.6118,-62.3807,79.0298,7.988,decrease,-38.3096
+
+category,image_name,section,rank,algorithm,original_std,processed_std,std_delta,ambe,psnr,contrast_effect,ranking_score
+summary,Malignant case (52)_bajo_contraste.jpg,MEJOR_CONTRASTE,1,Enhanced Top-Hat 15x15,63.9926,68.4575,4.4649,0.408,24.7621,increase,35.2628
+summary,Malignant case (52)_bajo_contraste.jpg,MEJOR_BRILLO,4,Enhanced Top-Hat 3x3,63.9926,64.3413,0.3488,0.1448,38.9031,increase,34.0434
+summary,Malignant case (52)_bajo_contraste.jpg,MENOR_DISTORSION,4,Enhanced Top-Hat 3x3,63.9926,64.3413,0.3488,0.1448,38.9031,increase,34.0434
+summary,Malignant case (52)_bajo_contraste.jpg,MEJOR_GENERAL,1,Enhanced Top-Hat 15x15,63.9926,68.4575,4.4649,0.408,24.7621,increase,35.2628
+
+notes
+mejor_contraste,La version donde los detalles se ven mas marcados y la separacion entre zonas claras y oscuras es mayor.
+mejor_brillo,"La version que conserva el brillo mas parecido al original, sin aclarar ni oscurecer demasiado."
+menor_distorsion,La version que cambia menos respecto a la imagen original y conserva mejor su apariencia general.
+mejor_general,"La version que ofrece el mejor equilibrio entre contraste, brillo y similitud con la imagen original."
+ranking_score,"Puntaje compuesto usado para ordenar los algoritmos: favorece contraste y similitud, y penaliza cambios de brillo. Formula: ranking_score = (processed_std * 0.5) + (PSNR * 0.05) - (AMBE * 0.5)."

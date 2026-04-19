@@ -166,8 +166,8 @@ class ImageApp:
         self.image_ranking_button.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(6, 0))
         self.comparison_refresh_button = ttk.Button(
             algorithm_frame,
-            text="Obtener datos globales",
-            command=self.show_global_comparison_view,
+            text="Procesar carpeta",
+            command=self.process_current_folder,
         )
         self.comparison_refresh_button.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(6, 0))
 
@@ -798,36 +798,51 @@ class ImageApp:
         )
         self._update_experiment_visibility(processed=True)
 
-    def show_global_comparison_view(self) -> None:
-        """Show and populate the global comparison view."""
+    def process_current_folder(self) -> None:
+        """Process all images in the selected folder and persist rankings/artifacts."""
         if self.current_folder is None:
-            messagebox.showinfo("Comparativa", "Primero selecciona una carpeta.")
+            messagebox.showinfo("Procesar carpeta", "Primero selecciona una carpeta.")
             return
+
+        image_files = list_image_files(self.current_folder)
+        if not image_files:
+            messagebox.showinfo("Procesar carpeta", "La carpeta no contiene imágenes compatibles.")
+            return
+
+        config = self._current_batch_config()
+        results_root = Path(__file__).resolve().parent.parent / "results"
+        results_root.mkdir(parents=True, exist_ok=True)
+        global_csv = self.single_image_ranking_csv
+        if global_csv is None:
+            messagebox.showinfo("Procesar carpeta", "No se pudo preparar el archivo de salida.")
+            return
+
+        if global_csv.exists():
+            global_csv.unlink()
+
+        processed_count = 0
+        for image_path in image_files:
+            image = load_image(image_path)
+            if image is None:
+                continue
+
+            ranking_rows = build_image_comparison(image, config)
+            append_image_ranking_csv(global_csv, image_path.name, ranking_rows)
+            summary_rows = self._build_best_case_summary_rows(ranking_rows)
+            self._append_summary_to_ranking_csv(summary_rows, image_name=image_path.name)
+            self._write_image_specific_csv(ranking_rows, summary_rows, image_name=image_path.name)
+            self._export_best_case_artifacts(image, image_path.name, ranking_rows, config)
+            processed_count += 1
+
+        self._append_global_csv_notes(global_csv)
+
         self.refresh_global_comparison_view()
-
-    def run_batch_processing(self) -> None:
-        """Process all JPG images in the selected folder with all algorithms."""
-        if self.current_folder is None:
-            messagebox.showinfo("Batch", "Primero selecciona una carpeta.")
-            return
-
-        try:
-            result_paths = run_folder_batch(
-                self.current_folder,
-                Path(__file__).resolve().parent.parent / "results",
-                BatchConfig(),
-            )
-        except Exception as exc:  # pragma: no cover - user-facing error path
-            messagebox.showerror("Batch", f"No se pudo ejecutar el procesamiento batch:\n{exc}")
-            return
-
         messagebox.showinfo(
-            "Batch completado",
-            "Procesamiento batch finalizado.\n"
-            f"Carpeta: {result_paths['batch_dir']}\n"
-            f"Comparativa global: {result_paths['comparison_csv']}",
+            "Procesar carpeta",
+            f"Se procesaron {processed_count} imagen(es).\n"
+            f"CSV global: {global_csv}",
         )
-        self.status_label.configure(text=f"Batch completado para {self.current_folder.name}")
+        self.status_label.configure(text=f"Carpeta procesada: {self.current_folder.name}")
 
     def refresh_global_comparison_view(self) -> None:
         """Refresh the global comparison table for the current folder."""
@@ -884,23 +899,18 @@ class ImageApp:
             )
 
     def calculate_selected_image_ranking(self) -> None:
-        """Calculate and save the ranking for the currently selected image."""
+        """Calculate and show the ranking for the currently selected image."""
         if self.selected_image is None or self.selected_image_name is None or self.single_image_ranking_csv is None:
             messagebox.showinfo("Ranking", "Primero selecciona una imagen.")
             return
 
         config = self._current_batch_config()
         rows = build_image_comparison(self.selected_image, config)
-        append_image_ranking_csv(self.single_image_ranking_csv, self.selected_image_name, rows)
-        summary_rows = self._build_best_case_summary_rows(rows)
-        self._append_summary_to_ranking_csv(summary_rows)
-        self._write_image_specific_csv(rows, summary_rows)
-        self._export_best_case_artifacts(rows, config)
         if self.image_comparison_frame is not None:
             self.image_comparison_frame.grid()
         self.refresh_image_comparison_view()
         self.status_label.configure(
-            text=f"Ranking calculado y guardado para {self.selected_image_name}"
+            text=f"Ranking calculado para {self.selected_image_name}"
         )
 
     def run_top_hat_kernel_experiment(self) -> None:
@@ -1060,18 +1070,22 @@ class ImageApp:
             )
         return summary_rows
 
-    def _append_summary_to_ranking_csv(self, summary_rows: list[dict[str, object]]) -> None:
+    def _append_summary_to_ranking_csv(self, summary_rows: list[dict[str, object]], image_name: str | None = None) -> None:
         """Append the summary winners to the same ranking CSV."""
-        if self.single_image_ranking_csv is None or self.selected_image_name is None:
+        if self.single_image_ranking_csv is None:
+            return
+        image_label = image_name or self.selected_image_name
+        if image_label is None:
             return
         with self.single_image_ranking_csv.open("a", newline="", encoding="utf-8") as csv_file:
             writer = csv.writer(csv_file)
             writer.writerow([])
-            writer.writerow(["summary_image", self.selected_image_name])
-            writer.writerow(["section", "rank", "algorithm", "original_std", "processed_std", "std_delta", "ambe", "psnr", "contrast_effect", "ranking_score"])
+            writer.writerow(["category", "image_name", "section", "rank", "algorithm", "original_std", "processed_std", "std_delta", "ambe", "psnr", "contrast_effect", "ranking_score"])
             for row in summary_rows:
                 writer.writerow(
                     [
+                        "summary",
+                        image_label,
                         row["section"],
                         row["rank"],
                         row["algorithm"],
@@ -1084,24 +1098,30 @@ class ImageApp:
                         row["ranking_score"],
                     ]
                 )
+            writer.writerow([])
 
-    def _write_image_specific_csv(self, ranking_rows: list[dict[str, object]], summary_rows: list[dict[str, object]]) -> None:
+    def _write_image_specific_csv(self, ranking_rows: list[dict[str, object]], summary_rows: list[dict[str, object]], image_name: str | None = None) -> None:
         """Write a CSV dedicated to the selected image inside its artifact folder."""
-        if self.image_artifacts_root is None or self.selected_image_name is None:
+        if self.image_artifacts_root is None:
             return
 
-        image_stem = Path(self.selected_image_name).stem
+        image_label = image_name or self.selected_image_name
+        if image_label is None:
+            return
+
+        image_stem = Path(image_label).stem
         output_dir = self.image_artifacts_root / image_stem
         output_dir.mkdir(parents=True, exist_ok=True)
         csv_path = output_dir / f"{image_stem}_ranking.csv"
 
         with csv_path.open("w", newline="", encoding="utf-8") as csv_file:
             writer = csv.writer(csv_file)
-            writer.writerow(["image_name", self.selected_image_name])
-            writer.writerow(["rank", "algorithm", "original_std", "processed_std", "std_delta", "ambe", "psnr", "contrast_effect", "ranking_score"])
+            writer.writerow(["category", "image_name", "rank", "algorithm", "original_std", "processed_std", "std_delta", "ambe", "psnr", "contrast_effect", "ranking_score"])
             for row in ranking_rows:
                 writer.writerow(
                     [
+                        "ranking",
+                        image_label,
                         row["rank"],
                         row["algorithm"],
                         row["original_std"],
@@ -1115,11 +1135,12 @@ class ImageApp:
                 )
 
             writer.writerow([])
-            writer.writerow(["summary_image", self.selected_image_name])
-            writer.writerow(["section", "rank", "algorithm", "original_std", "processed_std", "std_delta", "ambe", "psnr", "contrast_effect", "ranking_score"])
+            writer.writerow(["category", "image_name", "section", "rank", "algorithm", "original_std", "processed_std", "std_delta", "ambe", "psnr", "contrast_effect", "ranking_score"])
             for row in summary_rows:
                 writer.writerow(
                     [
+                        "summary",
+                        image_label,
                         row["section"],
                         row["rank"],
                         row["algorithm"],
@@ -1132,10 +1153,36 @@ class ImageApp:
                         row["ranking_score"],
                     ]
                 )
+            writer.writerow([])
+            writer.writerow(["notes"])
+            writer.writerow(["mejor_contraste", "La version donde los detalles se ven mas marcados y la separacion entre zonas claras y oscuras es mayor."])
+            writer.writerow(["mejor_brillo", "La version que conserva el brillo mas parecido al original, sin aclarar ni oscurecer demasiado."])
+            writer.writerow(["menor_distorsion", "La version que cambia menos respecto a la imagen original y conserva mejor su apariencia general."])
+            writer.writerow(["mejor_general", "La version que ofrece el mejor equilibrio entre contraste, brillo y similitud con la imagen original."])
+            writer.writerow(["ranking_score", "Puntaje compuesto usado para ordenar los algoritmos: favorece contraste y similitud, y penaliza cambios de brillo. Formula: ranking_score = (processed_std * 0.5) + (PSNR * 0.05) - (AMBE * 0.5)."])
 
-    def _export_best_case_artifacts(self, ranking_rows: list[dict[str, object]], config: BatchConfig) -> None:
+    def _append_global_csv_notes(self, csv_path: Path) -> None:
+        """Append a human-readable explanation block to the global CSV."""
+        if not csv_path.exists():
+            return
+
+        with csv_path.open("a", newline="", encoding="utf-8") as csv_file:
+            writer = csv.writer(csv_file)
+            writer.writerow([])
+            writer.writerow(["notes"])
+            writer.writerow(["mejor_contraste", "La version donde los detalles se ven mas marcados y la separacion entre zonas claras y oscuras es mayor."])
+            writer.writerow(["mejor_brillo", "La version que conserva el brillo mas parecido al original, sin aclarar ni oscurecer demasiado."])
+            writer.writerow(["menor_distorsion", "La version que cambia menos respecto a la imagen original y conserva mejor su apariencia general."])
+            writer.writerow(["mejor_general", "La version que ofrece el mejor equilibrio entre contraste, brillo y similitud con la imagen original."])
+            writer.writerow(["ranking_score", "Puntaje compuesto usado para ordenar los algoritmos: favorece contraste y similitud, y penaliza cambios de brillo. Formula: ranking_score = (processed_std * 0.5) + (PSNR * 0.05) - (AMBE * 0.5)."])
+            writer.writerow(["std_original", "Desviacion estandar de la imagen original, usada como referencia del contraste inicial."])
+            writer.writerow(["std_procesada", "Desviacion estandar despues del procesamiento, usada como aproximacion del contraste obtenido."])
+            writer.writerow(["ambe", "Cambio absoluto del brillo medio respecto a la imagen original."])
+            writer.writerow(["psnr", "Medida de similitud entre la imagen original y la procesada."])
+
+    def _export_best_case_artifacts(self, original_image: np.ndarray, image_name: str, ranking_rows: list[dict[str, object]], config: BatchConfig) -> None:
         """Export images and histograms for the best cases by metric."""
-        if self.selected_image is None or self.selected_image_name is None or self.image_artifacts_root is None:
+        if self.image_artifacts_root is None:
             return
 
         best_cases = {
@@ -1145,11 +1192,14 @@ class ImageApp:
             "mejor_general": max(ranking_rows, key=lambda row: float(row["ranking_score"])),
         }
 
+        image_stem = Path(image_name).stem
+        image_root_dir = self.image_artifacts_root / image_stem
+        self._save_original_artifacts(original_image, image_root_dir)
         for folder_name, row in best_cases.items():
             algorithm_name = str(row["algorithm"])
-            processed_image = self._process_algorithm_with_config(self.selected_image, algorithm_name, config)
-            output_dir = self.image_artifacts_root / Path(self.selected_image_name).stem / folder_name
-            self._save_artifact_bundle(self.selected_image, processed_image, output_dir)
+            processed_image = self._process_algorithm_with_config(original_image, algorithm_name, config)
+            output_dir = image_root_dir / folder_name
+            self._save_processed_artifacts(processed_image, output_dir)
 
     def _process_algorithm_with_config(self, image_bgr: np.ndarray, algorithm_name: str, config: BatchConfig) -> np.ndarray:
         """Process an image using an explicit algorithm label and config."""
@@ -1180,12 +1230,16 @@ class ImageApp:
             return int(match.group(1))
         return default_kernel
 
-    def _save_artifact_bundle(self, original_image: np.ndarray, processed_image: np.ndarray, output_dir: Path) -> None:
-        """Save image pairs and their histograms to a folder."""
+    def _save_original_artifacts(self, original_image: np.ndarray, output_dir: Path) -> None:
+        """Save the original image and histogram once at the image root folder."""
         output_dir.mkdir(parents=True, exist_ok=True)
         cv2.imwrite(str(output_dir / "original.png"), original_image)
-        cv2.imwrite(str(output_dir / "processed.png"), processed_image)
         self._save_histogram_artifact(original_image, output_dir / "original_histogram.png")
+
+    def _save_processed_artifacts(self, processed_image: np.ndarray, output_dir: Path) -> None:
+        """Save only the processed image and its histogram in the metric folder."""
+        output_dir.mkdir(parents=True, exist_ok=True)
+        cv2.imwrite(str(output_dir / "processed.png"), processed_image)
         self._save_histogram_artifact(processed_image, output_dir / "processed_histogram.png")
 
     def _save_histogram_artifact(self, image_bgr: np.ndarray, output_path: Path) -> None:

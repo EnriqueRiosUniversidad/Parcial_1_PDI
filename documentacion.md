@@ -251,6 +251,30 @@ flowchart TD
     E --> G["Mostrar tabla de ranking"]
 ```
 
+### Explicacion simple de los apartados
+
+Para que el ranking sea facil de entender, cada imagen se evalua con cuatro ideas simples:
+
+- **Mejor contraste**: la version donde los detalles se ven mas marcados y la imagen se ve mas “viva” o con mas separacion entre zonas claras y oscuras.
+- **Mejor brillo**: la version que mantiene el brillo mas parecido al original, sin oscurecer demasiado ni iluminar de mas.
+- **Menor distorsion**: la version que cambia menos respecto a la imagen original, es decir, la que conserva mejor su apariencia general.
+- **Mejor general**: la version que logra el mejor balance entre contraste, brillo y distorsion.
+
+### Formula de mejor general
+
+El programa usa un puntaje compuesto llamado `ranking_score`:
+
+```text
+ranking_score = (processed_std * 0.5) + (PSNR * 0.05) - (AMBE * 0.5)
+```
+
+Interpretacion sencilla:
+- si sube el contraste, el puntaje mejora
+- si el brillo cambia poco, el puntaje mejora
+- si la imagen se parece mas al original, el puntaje mejora
+
+En resumen, `mejor general` es el algoritmo que mejor equilibra esos tres aspectos al mismo tiempo.
+
 ## Parametros por defecto de la aplicacion
 
 La aplicacion usa estos valores por defecto:
@@ -355,4 +379,3 @@ La pantalla principal esta dividida en:
 - La comparativa global y el ranking por imagen son vistas separadas.
 - El ranking por imagen usa los parametros actuales de la interfaz.
 - La comparativa global se calcula solo bajo demanda.
-

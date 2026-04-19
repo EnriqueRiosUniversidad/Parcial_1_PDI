@@ -1,0 +1,33 @@
+category,image_name,rank,algorithm,original_std,processed_std,std_delta,ambe,psnr,contrast_effect,ranking_score
+ranking,Malignant case (420)_ruido.jpg,1,Enhanced Top-Hat 7x7,73.4329,77.3012,3.8683,0.1104,24.6346,increase,39.8271
+ranking,Malignant case (420)_ruido.jpg,2,Enhanced Top-Hat 9x9,73.4329,77.7979,4.3649,0.7147,23.8307,increase,39.7331
+ranking,Malignant case (420)_ruido.jpg,3,Enhanced Top-Hat 5x5,73.4329,76.4643,3.0313,0.6035,26.0996,increase,39.2354
+ranking,Malignant case (420)_ruido.jpg,4,Enhanced Top-Hat 15x15,73.4329,78.9405,5.5076,3.329,22.2712,increase,38.9193
+ranking,Malignant case (420)_ruido.jpg,5,Enhanced Top-Hat 3x3,73.4329,74.6486,1.2156,0.3429,30.6667,increase,38.6862
+ranking,Malignant case (420)_ruido.jpg,6,CLAHE clip 1.5,73.4329,69.3464,-4.0865,1.628,28.1772,decrease,35.2681
+ranking,Malignant case (420)_ruido.jpg,7,CLAHE clip 2,73.4329,68.2228,-5.2102,1.217,25.9612,decrease,34.8009
+ranking,Malignant case (420)_ruido.jpg,8,CLAHE clip 3.0,73.4329,66.3072,-7.1257,0.0938,22.7463,decrease,34.244
+ranking,Malignant case (420)_ruido.jpg,9,HE,73.4329,69.1455,-4.2874,38.801,13.6639,decrease,15.8554
+ranking,Malignant case (420)_ruido.jpg,10,White Top-Hat 15x15,73.4329,27.0081,-46.4249,78.887,7.9643,decrease,-25.5412
+ranking,Malignant case (420)_ruido.jpg,11,White Top-Hat 9x9,73.4329,24.2179,-49.215,81.5173,7.6874,decrease,-28.2653
+ranking,Malignant case (420)_ruido.jpg,12,Black Top-Hat 15x15,73.4329,19.5833,-53.8496,78.8835,7.4432,decrease,-29.2779
+ranking,Malignant case (420)_ruido.jpg,13,White Top-Hat 7x7,73.4329,22.4288,-51.0042,83.0319,7.5366,decrease,-29.9247
+ranking,Malignant case (420)_ruido.jpg,14,White Top-Hat 5x5,73.4329,18.8904,-54.5425,85.3108,7.3325,decrease,-32.8436
+ranking,Malignant case (420)_ruido.jpg,15,Black Top-Hat 9x9,73.4329,13.0187,-60.4142,83.7006,7.2131,decrease,-34.9803
+ranking,Malignant case (420)_ruido.jpg,16,Black Top-Hat 7x7,73.4329,10.3196,-63.1134,85.6353,7.1088,decrease,-37.3024
+ranking,Malignant case (420)_ruido.jpg,17,Black Top-Hat 5x5,73.4329,7.0927,-66.3403,87.8005,6.9882,decrease,-40.0045
+ranking,Malignant case (420)_ruido.jpg,18,White Top-Hat 3x3,73.4329,7.9879,-65.445,89.4955,6.9632,decrease,-40.4056
+ranking,Malignant case (420)_ruido.jpg,19,Black Top-Hat 3x3,73.4329,4.1457,-69.2873,90.366,6.8329,decrease,-42.7685
+
+category,image_name,section,rank,algorithm,original_std,processed_std,std_delta,ambe,psnr,contrast_effect,ranking_score
+summary,Malignant case (420)_ruido.jpg,MEJOR_CONTRASTE,4,Enhanced Top-Hat 15x15,73.4329,78.9405,5.5076,3.329,22.2712,increase,38.9193
+summary,Malignant case (420)_ruido.jpg,MEJOR_BRILLO,8,CLAHE clip 3.0,73.4329,66.3072,-7.1257,0.0938,22.7463,decrease,34.244
+summary,Malignant case (420)_ruido.jpg,MENOR_DISTORSION,5,Enhanced Top-Hat 3x3,73.4329,74.6486,1.2156,0.3429,30.6667,increase,38.6862
+summary,Malignant case (420)_ruido.jpg,MEJOR_GENERAL,1,Enhanced Top-Hat 7x7,73.4329,77.3012,3.8683,0.1104,24.6346,increase,39.8271
+
+notes
+mejor_contraste,La version donde los detalles se ven mas marcados y la separacion entre zonas claras y oscuras es mayor.
+mejor_brillo,"La version que conserva el brillo mas parecido al original, sin aclarar ni oscurecer demasiado."
+menor_distorsion,La version que cambia menos respecto a la imagen original y conserva mejor su apariencia general.
+mejor_general,"La version que ofrece el mejor equilibrio entre contraste, brillo y similitud con la imagen original."
+ranking_score,"Puntaje compuesto usado para ordenar los algoritmos: favorece contraste y similitud, y penaliza cambios de brillo. Formula: ranking_score = (processed_std * 0.5) + (PSNR * 0.05) - (AMBE * 0.5)."

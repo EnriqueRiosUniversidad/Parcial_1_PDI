@@ -166,13 +166,14 @@ def append_image_ranking_csv(csv_path: str | Path, image_name: str, rows: list[d
     with csv_path.open("a", newline="", encoding="utf-8") as csv_file:
         writer = csv.writer(csv_file)
         if write_header:
-            writer.writerow(["image_name", "rank", "algorithm", "original_std", "processed_std", "std_delta", "ambe", "psnr", "contrast_effect", "ranking_score"])
+            writer.writerow(["category", "image_name", "rank", "algorithm", "original_std", "processed_std", "std_delta", "ambe", "psnr", "contrast_effect", "ranking_score"])
 
-        writer.writerow([image_name, "", "", "", "", "", "", "", "", ""])
+        writer.writerow(["ranking", image_name, "", "", "", "", "", "", "", "", ""])
         for row in rows:
             writer.writerow(
                 [
-                    "",
+                    "ranking",
+                    image_name,
                     row["rank"],
                     row["algorithm"],
                     row["original_std"],
@@ -184,6 +185,7 @@ def append_image_ranking_csv(csv_path: str | Path, image_name: str, rows: list[d
                     row["ranking_score"],
                 ]
             )
+        writer.writerow([])
 
 
 def _build_variants(config: BatchConfig) -> list[dict[str, object]]:
