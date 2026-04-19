@@ -8,7 +8,7 @@ from pathlib import Path
 
 import numpy as np
 
-from core.algorithms import apply_clahe, apply_histogram_equalization, apply_morphological_algorithm
+from core.algorithms import process_algorithm
 from core.image_loader import list_image_files, load_image
 from core.metrics import calculate_ambe, calculate_basic_metrics, calculate_psnr
 
@@ -207,27 +207,27 @@ def _build_variants(config: BatchConfig) -> list[dict[str, object]]:
         variants.append({"algorithm": "Black Top-Hat", "label": f"Black Top-Hat {kernel_size}x{kernel_size}", "kernel_size": kernel_size})
         variants.append({"algorithm": "Enhanced Top-Hat", "label": f"Enhanced Top-Hat {kernel_size}x{kernel_size}", "kernel_size": kernel_size})
 
+    variants.extend(
+        [
+            {"algorithm": "Bilateral + CLAHE + Unsharp", "label": "Bilateral + CLAHE + Unsharp"},
+            {"algorithm": "Gamma + CLAHE + Multi-scale White Top-Hat", "label": "Gamma + CLAHE + Multi-scale White Top-Hat"},
+            {"algorithm": "Homomorphic + CLAHE + Enhanced Top-Hat", "label": "Homomorphic + CLAHE + Enhanced Top-Hat"},
+        ]
+    )
+
     return variants
 
 
 def _apply_batch_algorithm(image_bgr: np.ndarray, variant: dict[str, object], config: BatchConfig) -> np.ndarray:
     """Apply one of the supported algorithm variants for batch processing."""
     algorithm_name = str(variant["algorithm"])
-    if algorithm_name == "HE":
-        return apply_histogram_equalization(image_bgr)
-    if algorithm_name == "CLAHE":
-        return apply_clahe(
-            image_bgr,
-            clip_limit=float(variant.get("clip_limit", config.clahe_clip_limit)),
-            tile_grid_size=config.clahe_tile_grid_size,
-        )
-    if algorithm_name in {"White Top-Hat", "Black Top-Hat", "Enhanced Top-Hat"}:
-        return apply_morphological_algorithm(
-            image_bgr,
-            algorithm_name,
-            kernel_size=int(variant.get("kernel_size", config.top_hat_kernel_size)),
-        )
-    return apply_histogram_equalization(image_bgr)
+    return process_algorithm(
+        image_bgr,
+        algorithm_name,
+        clip_limit=float(variant.get("clip_limit", config.clahe_clip_limit)),
+        tile_grid_size=config.clahe_tile_grid_size,
+        kernel_size=int(variant.get("kernel_size", config.top_hat_kernel_size)),
+    )
 
 
 def _build_comparison_rows(

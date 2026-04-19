@@ -1,29 +1,32 @@
 category,image_name,rank,algorithm,original_std,processed_std,std_delta,ambe,psnr,contrast_effect,ranking_score
-ranking,Malignant case (51)_bajo_contraste.jpg,1,Enhanced Top-Hat 15x15,66.2381,70.5033,4.2651,0.2595,24.3717,increase,36.3404
+ranking,Malignant case (51)_bajo_contraste.jpg,1,Enhanced Top-Hat 10x10,66.2381,69.4088,3.1707,0.5347,25.3844,increase,35.7062
 ranking,Malignant case (51)_bajo_contraste.jpg,2,Enhanced Top-Hat 9x9,66.2381,69.0788,2.8407,0.7611,26.0504,increase,35.4614
 ranking,Malignant case (51)_bajo_contraste.jpg,3,Enhanced Top-Hat 7x7,66.2381,68.7327,2.4946,0.9299,27.066,increase,35.2547
 ranking,Malignant case (51)_bajo_contraste.jpg,4,Enhanced Top-Hat 3x3,66.2381,66.6137,0.3756,0.1265,38.443,increase,35.1658
 ranking,Malignant case (51)_bajo_contraste.jpg,5,Enhanced Top-Hat 5x5,66.2381,67.819,1.5808,0.6174,30.3699,increase,35.1193
 ranking,Malignant case (51)_bajo_contraste.jpg,6,CLAHE clip 1.5,66.2381,63.6059,-2.6322,0.0815,28.8876,decrease,33.2066
-ranking,Malignant case (51)_bajo_contraste.jpg,7,CLAHE clip 2,66.2381,62.8856,-3.3526,0.7304,26.8909,decrease,32.4221
-ranking,Malignant case (51)_bajo_contraste.jpg,8,CLAHE clip 3.0,66.2381,61.4991,-4.739,2.5609,24.1286,decrease,30.6755
-ranking,Malignant case (51)_bajo_contraste.jpg,9,HE,66.2381,67.6813,1.4432,52.5233,11.5467,increase,8.1563
-ranking,Malignant case (51)_bajo_contraste.jpg,10,White Top-Hat 15x15,66.2381,25.2458,-40.9923,73.1766,8.6826,decrease,-23.5313
-ranking,Malignant case (51)_bajo_contraste.jpg,11,White Top-Hat 9x9,66.2381,23.7017,-42.5364,75.2827,8.394,decrease,-25.3708
-ranking,Malignant case (51)_bajo_contraste.jpg,12,White Top-Hat 7x7,66.2381,22.5512,-43.6869,76.2155,8.2943,decrease,-26.4174
-ranking,Malignant case (51)_bajo_contraste.jpg,13,White Top-Hat 5x5,66.2381,15.4757,-50.7624,78.4882,8.0911,decrease,-31.1017
-ranking,Malignant case (51)_bajo_contraste.jpg,14,Black Top-Hat 15x15,66.2381,11.3984,-54.8397,76.6502,8.0513,decrease,-32.2233
-ranking,Malignant case (51)_bajo_contraste.jpg,15,Black Top-Hat 9x9,66.2381,7.6245,-58.6136,78.7447,7.9117,decrease,-35.1645
-ranking,Malignant case (51)_bajo_contraste.jpg,16,Black Top-Hat 7x7,66.2381,6.041,-60.1971,79.6115,7.8463,decrease,-36.3929
-ranking,Malignant case (51)_bajo_contraste.jpg,17,Black Top-Hat 5x5,66.2381,4.0445,-62.1936,80.6397,7.7717,decrease,-37.909
-ranking,Malignant case (51)_bajo_contraste.jpg,18,White Top-Hat 3x3,66.2381,4.1685,-62.0696,81.3171,7.772,decrease,-38.1857
-ranking,Malignant case (51)_bajo_contraste.jpg,19,Black Top-Hat 3x3,66.2381,1.8094,-64.4287,81.7512,7.6919,decrease,-39.5863
+ranking,Malignant case (51)_bajo_contraste.jpg,7,Bilateral + CLAHE + Unsharp,66.2381,61.473,-4.7651,1.5139,24.1209,decrease,31.1856
+ranking,Malignant case (51)_bajo_contraste.jpg,8,CLAHE clip 3,66.2381,61.4991,-4.739,2.5609,24.1286,decrease,30.6755
+ranking,Malignant case (51)_bajo_contraste.jpg,9,CLAHE clip 3.0,66.2381,61.4991,-4.739,2.5609,24.1286,decrease,30.6755
+ranking,Malignant case (51)_bajo_contraste.jpg,10,Homomorphic + CLAHE + Enhanced Top-Hat,66.2381,55.9374,-10.3007,22.4324,13.7256,decrease,17.4388
+ranking,Malignant case (51)_bajo_contraste.jpg,11,HE,66.2381,67.6813,1.4432,52.5233,11.5467,increase,8.1563
+ranking,Malignant case (51)_bajo_contraste.jpg,12,Gamma + CLAHE + Multi-scale White Top-Hat,66.2381,28.7276,-37.5105,65.5299,9.1696,decrease,-17.9427
+ranking,Malignant case (51)_bajo_contraste.jpg,13,White Top-Hat 10x10,66.2381,24.0762,-42.1619,74.6283,8.4746,decrease,-24.8523
+ranking,Malignant case (51)_bajo_contraste.jpg,14,White Top-Hat 9x9,66.2381,23.7017,-42.5364,75.2827,8.394,decrease,-25.3708
+ranking,Malignant case (51)_bajo_contraste.jpg,15,White Top-Hat 7x7,66.2381,22.5512,-43.6869,76.2155,8.2943,decrease,-26.4174
+ranking,Malignant case (51)_bajo_contraste.jpg,16,White Top-Hat 5x5,66.2381,15.4757,-50.7624,78.4882,8.0911,decrease,-31.1017
+ranking,Malignant case (51)_bajo_contraste.jpg,17,Black Top-Hat 10x10,66.2381,9.0349,-57.2032,77.9767,7.9674,decrease,-34.0725
+ranking,Malignant case (51)_bajo_contraste.jpg,18,Black Top-Hat 9x9,66.2381,7.6245,-58.6136,78.7447,7.9117,decrease,-35.1645
+ranking,Malignant case (51)_bajo_contraste.jpg,19,Black Top-Hat 7x7,66.2381,6.041,-60.1971,79.6115,7.8463,decrease,-36.3929
+ranking,Malignant case (51)_bajo_contraste.jpg,20,Black Top-Hat 5x5,66.2381,4.0445,-62.1936,80.6397,7.7717,decrease,-37.909
+ranking,Malignant case (51)_bajo_contraste.jpg,21,White Top-Hat 3x3,66.2381,4.1685,-62.0696,81.3171,7.772,decrease,-38.1857
+ranking,Malignant case (51)_bajo_contraste.jpg,22,Black Top-Hat 3x3,66.2381,1.8094,-64.4287,81.7512,7.6919,decrease,-39.5863
 
 category,image_name,section,rank,algorithm,original_std,processed_std,std_delta,ambe,psnr,contrast_effect,ranking_score
-summary,Malignant case (51)_bajo_contraste.jpg,MEJOR_CONTRASTE,1,Enhanced Top-Hat 15x15,66.2381,70.5033,4.2651,0.2595,24.3717,increase,36.3404
+summary,Malignant case (51)_bajo_contraste.jpg,MEJOR_CONTRASTE,1,Enhanced Top-Hat 10x10,66.2381,69.4088,3.1707,0.5347,25.3844,increase,35.7062
 summary,Malignant case (51)_bajo_contraste.jpg,MEJOR_BRILLO,6,CLAHE clip 1.5,66.2381,63.6059,-2.6322,0.0815,28.8876,decrease,33.2066
 summary,Malignant case (51)_bajo_contraste.jpg,MENOR_DISTORSION,4,Enhanced Top-Hat 3x3,66.2381,66.6137,0.3756,0.1265,38.443,increase,35.1658
-summary,Malignant case (51)_bajo_contraste.jpg,MEJOR_GENERAL,1,Enhanced Top-Hat 15x15,66.2381,70.5033,4.2651,0.2595,24.3717,increase,36.3404
+summary,Malignant case (51)_bajo_contraste.jpg,MEJOR_GENERAL,1,Enhanced Top-Hat 10x10,66.2381,69.4088,3.1707,0.5347,25.3844,increase,35.7062
 
 notes
 mejor_contraste,La version donde los detalles se ven mas marcados y la separacion entre zonas claras y oscuras es mayor.

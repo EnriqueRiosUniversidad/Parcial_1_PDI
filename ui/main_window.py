@@ -13,7 +13,7 @@ import numpy as np
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 
-from core.algorithms import apply_clahe, apply_histogram_equalization, apply_morphological_algorithm
+from core.algorithms import process_algorithm
 from core.batch import (
     BatchConfig,
     append_image_ranking_csv,
@@ -155,13 +155,16 @@ class ImageApp:
             "White Top-Hat",
             "Black Top-Hat",
             "Enhanced Top-Hat",
+            "Bilateral + CLAHE + Unsharp",
+            "Gamma + CLAHE + Multi-scale White Top-Hat",
+            "Homomorphic + CLAHE + Enhanced Top-Hat",
         ]
         self.algorithm_combo = ttk.Combobox(
             algorithm_frame,
             textvariable=self.algorithm_var,
             values=self.algorithm_options,
             state="readonly",
-            width=20,
+            width=38,
         )
         self.algorithm_combo.grid(row=0, column=1, sticky="w", padx=(8, 0))
         self.algorithm_combo.bind("<<ComboboxSelected>>", self._on_algorithm_change)
@@ -321,7 +324,7 @@ class ImageApp:
 
         self.helper_label = ttk.Label(
             preview_frame,
-            text="HE: sin parámetros. CLAHE: usa clipLimit y tileGridSize. Morfología: usa kernel.",
+            text="HE: sin parámetros. CLAHE y pipelines con CLAHE: usa clipLimit y tileGridSize. Morfología y pipelines con top-hat: usa kernel.",
             wraplength=620,
             justify="left",
         )
@@ -333,7 +336,7 @@ class ImageApp:
         self.experiment_frame.columnconfigure(0, weight=1)
         self.experiment_button = ttk.Button(
             self.experiment_frame,
-            text="Probar kernels 3-5-7-9",
+            text="Probar kernels 3-7",
             command=self.run_top_hat_kernel_experiment,
         )
         self.experiment_button.grid(row=0, column=0, sticky="ew")
@@ -692,21 +695,13 @@ class ImageApp:
     def _process_selected_algorithm(self, image_bgr: np.ndarray) -> np.ndarray:
         """Apply the selected enhancement algorithm."""
         algorithm_name = self.algorithm_var.get()
-        if algorithm_name == "HE":
-            return apply_histogram_equalization(image_bgr)
-        if algorithm_name == "CLAHE":
-            return apply_clahe(
-                image_bgr,
-                clip_limit=self._read_clip_limit(),
-                tile_grid_size=self._read_tile_grid_size(),
-            )
-        if algorithm_name in {"White Top-Hat", "Black Top-Hat", "Enhanced Top-Hat"}:
-            return apply_morphological_algorithm(
-                image_bgr,
-                algorithm_name,
-                kernel_size=self._read_kernel_size(),
-            )
-        return apply_histogram_equalization(image_bgr)
+        return process_algorithm(
+            image_bgr,
+            algorithm_name,
+            clip_limit=self._read_clip_limit(),
+            tile_grid_size=self._read_tile_grid_size(),
+            kernel_size=self._read_kernel_size(),
+        )
 
     def _read_clip_limit(self) -> float:
         """Read the clip limit parameter with a safe default."""
@@ -745,8 +740,18 @@ class ImageApp:
     def _update_parameter_visibility(self) -> None:
         """Enable only the parameter controls relevant to the selected algorithm."""
         algorithm_name = self.algorithm_var.get()
-        is_clahe = algorithm_name == "CLAHE"
-        is_morphology = algorithm_name in {"White Top-Hat", "Black Top-Hat", "Enhanced Top-Hat"}
+        is_clahe = algorithm_name in {
+            "CLAHE",
+            "Bilateral + CLAHE + Unsharp",
+            "Gamma + CLAHE + Multi-scale White Top-Hat",
+            "Homomorphic + CLAHE + Enhanced Top-Hat",
+        }
+        is_morphology = algorithm_name in {
+            "White Top-Hat",
+            "Black Top-Hat",
+            "Enhanced Top-Hat",
+            "Homomorphic + CLAHE + Enhanced Top-Hat",
+        }
 
         for widget in (self.clip_limit_entry, self.tile_grid_x_entry, self.tile_grid_y_entry):
             widget.configure(state="normal" if is_clahe else "disabled")
@@ -754,7 +759,15 @@ class ImageApp:
         self.kernel_size_entry.configure(state="normal" if is_morphology else "disabled")
 
         if is_clahe:
-            self.helper_label.configure(text="CLAHE activo: ajusta clipLimit y tileGridSize, luego pulsa Procesar.")
+            if algorithm_name == "Bilateral + CLAHE + Unsharp":
+                helper_text = "Bilateral + CLAHE + Unsharp activo: ajusta clipLimit y tileGridSize, luego pulsa Procesar."
+            elif algorithm_name == "Gamma + CLAHE + Multi-scale White Top-Hat":
+                helper_text = "Gamma + CLAHE + Multi-scale White Top-Hat activo: ajusta clipLimit y tileGridSize, luego pulsa Procesar."
+            elif algorithm_name == "Homomorphic + CLAHE + Enhanced Top-Hat":
+                helper_text = "Homomorphic + CLAHE + Enhanced Top-Hat activo: ajusta clipLimit, tileGridSize y kernel, luego pulsa Procesar."
+            else:
+                helper_text = "CLAHE activo: ajusta clipLimit y tileGridSize, luego pulsa Procesar."
+            self.helper_label.configure(text=helper_text)
         elif is_morphology:
             self.helper_label.configure(text="Top-Hat activo: ajusta kernel y pulsa Procesar.")
         else:
@@ -931,7 +944,7 @@ class ImageApp:
             messagebox.showinfo("Experimento", "Selecciona un algoritmo Top-Hat para ejecutar esta prueba.")
             return
 
-        kernel_sizes = [3, 5, 7, 9]
+        kernel_sizes = [3, 7]
         original_image = self.selected_image
         original_metrics = calculate_basic_metrics(original_image)
 
@@ -941,11 +954,7 @@ class ImageApp:
 
         results_rows: list[dict[str, object]] = []
         for kernel_size in kernel_sizes:
-            processed_image = apply_morphological_algorithm(
-                original_image,
-                algorithm_name,
-                kernel_size=kernel_size,
-            )
+            processed_image = process_algorithm(original_image, algorithm_name, kernel_size=kernel_size)
             processed_metrics = calculate_basic_metrics(processed_image)
             ambe_value = calculate_ambe(original_image, processed_image)
             psnr_value = calculate_psnr(original_image, processed_image)
@@ -1211,24 +1220,48 @@ class ImageApp:
     def _process_algorithm_with_config(self, image_bgr: np.ndarray, algorithm_name: str, config: BatchConfig) -> np.ndarray:
         """Process an image using an explicit algorithm label and config."""
         if algorithm_name == "HE":
-            return apply_histogram_equalization(image_bgr)
+            return process_algorithm(image_bgr, "HE")
         if algorithm_name.startswith("CLAHE"):
             clip_limit = config.clahe_clip_limit
             if "1.5" in algorithm_name:
                 clip_limit = 1.5
             elif "3.0" in algorithm_name:
                 clip_limit = 3.0
-            return apply_clahe(image_bgr, clip_limit=clip_limit, tile_grid_size=config.clahe_tile_grid_size)
+            return process_algorithm(
+                image_bgr,
+                "CLAHE",
+                clip_limit=clip_limit,
+                tile_grid_size=config.clahe_tile_grid_size,
+                kernel_size=config.top_hat_kernel_size,
+            )
         if algorithm_name.startswith("White Top-Hat"):
             kernel = self._extract_kernel_size_from_label(algorithm_name, config.top_hat_kernel_size)
-            return apply_morphological_algorithm(image_bgr, "White Top-Hat", kernel_size=kernel)
+            return process_algorithm(image_bgr, "White Top-Hat", kernel_size=kernel)
         if algorithm_name.startswith("Black Top-Hat"):
             kernel = self._extract_kernel_size_from_label(algorithm_name, config.top_hat_kernel_size)
-            return apply_morphological_algorithm(image_bgr, "Black Top-Hat", kernel_size=kernel)
+            return process_algorithm(image_bgr, "Black Top-Hat", kernel_size=kernel)
         if algorithm_name.startswith("Enhanced Top-Hat"):
             kernel = self._extract_kernel_size_from_label(algorithm_name, config.top_hat_kernel_size)
-            return apply_morphological_algorithm(image_bgr, "Enhanced Top-Hat", kernel_size=kernel)
-        return apply_histogram_equalization(image_bgr)
+            return process_algorithm(image_bgr, "Enhanced Top-Hat", kernel_size=kernel)
+        if algorithm_name in {
+            "Bilateral + CLAHE + Unsharp",
+            "Gamma + CLAHE + Multi-scale White Top-Hat",
+            "Homomorphic + CLAHE + Enhanced Top-Hat",
+        }:
+            return process_algorithm(
+                image_bgr,
+                algorithm_name,
+                clip_limit=config.clahe_clip_limit,
+                tile_grid_size=config.clahe_tile_grid_size,
+                kernel_size=config.top_hat_kernel_size,
+            )
+        return process_algorithm(
+            image_bgr,
+            "HE",
+            clip_limit=config.clahe_clip_limit,
+            tile_grid_size=config.clahe_tile_grid_size,
+            kernel_size=config.top_hat_kernel_size,
+        )
 
     def _extract_kernel_size_from_label(self, algorithm_name: str, default_kernel: int) -> int:
         """Extract a kernel size from the ranking label if present."""
