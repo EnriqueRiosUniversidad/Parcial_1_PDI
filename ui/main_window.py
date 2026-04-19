@@ -78,16 +78,16 @@ class ImageApp:
 
     def _setup_visual_style(self) -> None:
         """Apply a restrained fantasy-inspired dark theme."""
-        self.bg_main = "#111915"
-        self.bg_panel = "#17231d"
-        self.bg_panel_alt = "#1d2a23"
-        self.bg_canvas = "#0f1713"
-        self.bg_border = "#33463a"
-        self.text_main = "#e7e2d4"
-        self.text_muted = "#b8c0b0"
-        self.accent_gold = "#c9b46b"
-        self.accent_gold_soft = "#8e7a3f"
-        self.entry_bg = "#203028"
+        self.bg_main = "#eef7ef"
+        self.bg_panel = "#dcebdd"
+        self.bg_panel_alt = "#c9dec9"
+        self.bg_canvas = "#f6faf6"
+        self.bg_border = "#9fbca1"
+        self.text_main = "#203327"
+        self.text_muted = "#627664"
+        self.accent_gold = "#8ea65b"
+        self.accent_gold_soft = "#c0d68d"
+        self.entry_bg = "#fbfdfb"
 
         self.root.configure(bg=self.bg_main)
 
@@ -103,15 +103,24 @@ class ImageApp:
         style.configure("TLabelframe.Label", background=self.bg_panel, foreground=self.accent_gold, font=("Helvetica", 10, "bold"))
         style.configure("TLabel", background=self.bg_main, foreground=self.text_main, font=("Helvetica", 10))
         style.configure("Header.TLabel", background=self.bg_main, foreground=self.accent_gold, font=("Helvetica", 11, "bold"))
-        style.configure("TButton", background=self.bg_panel_alt, foreground=self.text_main, padding=(10, 6), borderwidth=1, focusthickness=1, focuscolor=self.accent_gold_soft)
+        style.configure(
+            "TButton",
+            background=self.bg_panel_alt,
+            foreground=self.text_main,
+            padding=(14, 9),
+            borderwidth=1,
+            focusthickness=1,
+            focuscolor=self.accent_gold_soft,
+            relief="flat",
+        )
         style.map(
             "TButton",
-            background=[("active", self.bg_border), ("pressed", self.bg_border)],
+            background=[("active", self.bg_panel), ("pressed", self.bg_border)],
             foreground=[("disabled", self.text_muted)],
         )
-        style.configure("TCombobox", fieldbackground=self.entry_bg, background=self.bg_panel_alt, foreground=self.text_main, arrowcolor=self.accent_gold)
+        style.configure("TCombobox", fieldbackground=self.entry_bg, background=self.bg_panel_alt, foreground=self.text_main, arrowcolor=self.accent_gold, padding=4)
         style.map("TCombobox", fieldbackground=[("readonly", self.entry_bg)], foreground=[("readonly", self.text_main)])
-        style.configure("Treeview", background=self.bg_panel, fieldbackground=self.bg_panel, foreground=self.text_main, rowheight=24, bordercolor=self.bg_border, borderwidth=1)
+        style.configure("Treeview", background=self.bg_canvas, fieldbackground=self.bg_canvas, foreground=self.text_main, rowheight=28, bordercolor=self.bg_border, borderwidth=1)
         style.configure("Treeview.Heading", background=self.bg_panel_alt, foreground=self.text_main, relief="flat", font=("Helvetica", 10, "bold"))
         style.map("Treeview", background=[("selected", self.bg_border)], foreground=[("selected", self.text_main)])
         style.configure("Vertical.TScrollbar", background=self.bg_panel_alt, troughcolor=self.bg_main, arrowcolor=self.accent_gold)
@@ -127,7 +136,7 @@ class ImageApp:
         toolbar.columnconfigure(1, weight=1)
         toolbar.columnconfigure(2, weight=1)
 
-        source_frame = ttk.LabelFrame(toolbar, text="Origen", padding=(8, 6))
+        source_frame = ttk.LabelFrame(toolbar, text="Origen", padding=(10, 8))
         source_frame.grid(row=0, column=0, sticky="ew", padx=(0, 8))
         source_frame.columnconfigure(0, weight=1)
         select_button = ttk.Button(source_frame, text="Abrir carpeta", command=self.select_folder)
@@ -135,7 +144,7 @@ class ImageApp:
         self.folder_label = ttk.Label(source_frame, text="Ninguna carpeta seleccionada")
         self.folder_label.grid(row=1, column=0, sticky="w", pady=(8, 0))
 
-        algorithm_frame = ttk.LabelFrame(toolbar, text="Procesamiento", padding=(8, 6))
+        algorithm_frame = ttk.LabelFrame(toolbar, text="Procesamiento", padding=(10, 8))
         algorithm_frame.grid(row=0, column=1, sticky="ew", padx=8)
         algorithm_frame.columnconfigure(1, weight=1)
         ttk.Label(algorithm_frame, text="Algoritmo:").grid(row=0, column=0, sticky="w")
@@ -171,7 +180,7 @@ class ImageApp:
         )
         self.comparison_refresh_button.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(6, 0))
 
-        params_frame = ttk.LabelFrame(toolbar, text="Parámetros", padding=(8, 6))
+        params_frame = ttk.LabelFrame(toolbar, text="Parámetros", padding=(10, 8))
         params_frame.grid(row=0, column=2, sticky="ew", padx=(8, 0))
         params_frame.columnconfigure(1, weight=1)
         ttk.Label(params_frame, text="CLAHE clipLimit").grid(row=0, column=0, sticky="w")
@@ -189,14 +198,12 @@ class ImageApp:
         self.kernel_size_entry = ttk.Entry(params_frame, textvariable=self.kernel_size_var, width=8)
         self.kernel_size_entry.grid(row=2, column=1, sticky="w", padx=(8, 0), pady=(6, 0))
 
-        left_panel = ttk.Frame(self.root, padding=(10, 0, 5, 8))
+        left_panel = ttk.Frame(self.root, padding=(12, 2, 6, 10))
         left_panel.grid(row=1, column=0, sticky="nsew")
         left_panel.columnconfigure(0, weight=1)
         left_panel.rowconfigure(1, weight=1)
 
-        ttk.Label(left_panel, text="Imágenes detectadas").grid(
-            row=0, column=0, sticky="w", pady=(0, 5)
-        )
+        ttk.Label(left_panel, text="Imágenes detectadas", foreground=self.accent_gold).grid(row=0, column=0, sticky="w", pady=(0, 5))
 
         list_frame = ttk.Frame(left_panel)
         list_frame.grid(row=1, column=0, sticky="nsew")
@@ -205,8 +212,8 @@ class ImageApp:
 
         self.image_listbox = tk.Listbox(
             list_frame,
-            activestyle="dotbox",
-            bg=self.bg_panel,
+            activestyle="none",
+            bg=self.bg_canvas,
             fg=self.text_main,
             selectbackground=self.accent_gold_soft,
             selectforeground=self.text_main,
@@ -230,7 +237,7 @@ class ImageApp:
         scrollbar.grid(row=0, column=1, sticky="ns")
         self.image_listbox.configure(yscrollcommand=scrollbar.set)
 
-        right_panel = ttk.Frame(self.root, padding=(5, 0, 10, 8))
+        right_panel = ttk.Frame(self.root, padding=(6, 2, 12, 10))
         right_panel.grid(row=1, column=1, sticky="nsew")
         right_panel.columnconfigure(0, weight=1)
         right_panel.rowconfigure(0, weight=1)
@@ -265,12 +272,12 @@ class ImageApp:
         ttk.Label(preview_frame, text="Histograma original").grid(row=0, column=0, sticky="w", pady=(0, 5))
         ttk.Label(preview_frame, text="Imagen original").grid(row=0, column=1, sticky="w", pady=(0, 5))
 
-        self.histogram_container = tk.Frame(preview_frame, bd=1, relief="solid", bg=self.bg_panel)
+        self.histogram_container = tk.Frame(preview_frame, bd=1, relief="solid", bg=self.bg_canvas, highlightbackground=self.bg_border, highlightthickness=1)
         self.histogram_container.grid(row=1, column=0, sticky="nsew", padx=(0, 8), pady=(0, 6))
         self.histogram_container.columnconfigure(0, weight=1)
         self.histogram_container.rowconfigure(0, weight=1)
 
-        self.original_container = tk.Frame(preview_frame, bd=1, relief="solid", bg=self.bg_panel)
+        self.original_container = tk.Frame(preview_frame, bd=1, relief="solid", bg=self.bg_canvas, highlightbackground=self.bg_border, highlightthickness=1)
         self.original_container.grid(row=1, column=1, sticky="nsew", pady=(0, 6))
         self.original_container.columnconfigure(0, weight=1)
         self.original_container.rowconfigure(0, weight=1)
@@ -278,17 +285,17 @@ class ImageApp:
         ttk.Label(preview_frame, text="Histograma procesado").grid(row=2, column=0, sticky="w", pady=(0, 5))
         ttk.Label(preview_frame, text="Imagen procesada").grid(row=2, column=1, sticky="w", pady=(0, 5))
 
-        self.processed_histogram_container = tk.Frame(preview_frame, bd=1, relief="solid", bg=self.bg_panel)
+        self.processed_histogram_container = tk.Frame(preview_frame, bd=1, relief="solid", bg=self.bg_canvas, highlightbackground=self.bg_border, highlightthickness=1)
         self.processed_histogram_container.grid(row=3, column=0, sticky="nsew", padx=(0, 8), pady=(0, 6))
         self.processed_histogram_container.columnconfigure(0, weight=1)
         self.processed_histogram_container.rowconfigure(0, weight=1)
 
-        self.processed_container = tk.Frame(preview_frame, bd=1, relief="solid", bg=self.bg_panel)
+        self.processed_container = tk.Frame(preview_frame, bd=1, relief="solid", bg=self.bg_canvas, highlightbackground=self.bg_border, highlightthickness=1)
         self.processed_container.grid(row=3, column=1, sticky="nsew", pady=(0, 6))
         self.processed_container.columnconfigure(0, weight=1)
         self.processed_container.rowconfigure(0, weight=1)
 
-        self.metrics_frame = ttk.LabelFrame(preview_frame, text="Métricas comparativas", padding=(8, 4))
+        self.metrics_frame = ttk.LabelFrame(preview_frame, text="Métricas comparativas", padding=(10, 6))
         self.metrics_frame.grid(row=4, column=0, columnspan=2, sticky="ew", pady=(0, 6))
         self.metrics_frame.columnconfigure(1, weight=1)
         self.metrics_frame.grid_remove()
@@ -320,7 +327,7 @@ class ImageApp:
         )
         self.helper_label.grid(row=6, column=0, columnspan=2, sticky="w", pady=(0, 4))
 
-        self.experiment_frame = ttk.LabelFrame(preview_frame, text="Experimento Top-Hat", padding=(8, 4))
+        self.experiment_frame = ttk.LabelFrame(preview_frame, text="Experimento Top-Hat", padding=(10, 6))
         self.experiment_frame.grid(row=7, column=0, columnspan=2, sticky="ew", pady=(0, 4))
         self.experiment_frame.grid_remove()
         self.experiment_frame.columnconfigure(0, weight=1)
@@ -352,7 +359,7 @@ class ImageApp:
         tree_scrollbar.grid(row=0, column=1, sticky="ns")
         self.kernel_results_tree.configure(yscrollcommand=tree_scrollbar.set)
 
-        self.global_comparison_frame = ttk.LabelFrame(preview_frame, text="Comparativa global", padding=(8, 4))
+        self.global_comparison_frame = ttk.LabelFrame(preview_frame, text="Comparativa global", padding=(10, 6))
         self.global_comparison_frame.grid(row=8, column=0, columnspan=2, sticky="ew", pady=(0, 4))
         self.global_comparison_frame.grid_remove()
         self.global_comparison_frame.columnconfigure(0, weight=1)
@@ -379,7 +386,7 @@ class ImageApp:
         global_scroll.grid(row=0, column=1, sticky="ns")
         self.global_comparison_tree.configure(yscrollcommand=global_scroll.set)
 
-        self.image_comparison_frame = ttk.LabelFrame(preview_frame, text="Ranking de imagen", padding=(8, 4))
+        self.image_comparison_frame = ttk.LabelFrame(preview_frame, text="Ranking de imagen", padding=(10, 6))
         self.image_comparison_frame.grid(row=9, column=0, columnspan=2, sticky="ew", pady=(0, 4))
         self.image_comparison_frame.grid_remove()
         self.image_comparison_frame.columnconfigure(0, weight=1)
